@@ -56,11 +56,16 @@ local function readout(self)
   local next = false
   local sens = self.sens
   local temp = self.temp
+
+  -- Sets back gpio mode correctly for reading
+  gpio.mode(pin, gpio.INPUT, gpio.PULLUP)
+
   for i, s in ipairs(sens) do
     if status[i] == 1 then
       ow_reset(pin)
       local addr = s:sub(1,8)
       ow_select(pin, addr)   -- select the  sensor
+      
       ow_write(pin, READ_SCRATCHPAD, MODE)
       local data = ow_read_bytes(pin, 9)
 
@@ -115,8 +120,14 @@ conversion = (function (self)
         ow_reset(pin)
         ow_select(pin, addr)  -- select the sensor
         ow_write(pin, CONVERT_T, MODE)  -- and start conversion
+
         status[i] = 1
-        if parasite then break end -- parasite sensor blocks bus during conversion
+        if parasite then 
+          -- Set gpio to strong pullup during parasite mode conversion
+          gpio.mode(pin, gpio.OUTPUT)
+          gpio.write(pin, gpio.HIGH)
+          break -- parasite sensor blocks bus during conversion
+        end 
         started = true
       end
     end
@@ -129,6 +140,9 @@ local function _search(self, lcb, lpin, search, save)
   if search then self.sens = {}; status = {} end
   local sens = self.sens
   pin = lpin or pin
+  
+  -- Set gpio mode correctly before search
+  gpio.mode(pin, gpio.INPUT, gpio.PULLUP)
 
   local addr
   if not search and #sens == 0 then
