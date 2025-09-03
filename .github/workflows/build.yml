@@ -7,269 +7,295 @@ on:
     branches: [ dev, release ]
 
 jobs:
+  build_luac_cross_win:
 
-
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        lua_ver: [51, 53]
-        numbers: ['float']
-        include:
-          - lua_ver: 51
-            numbers: 'integral'  
-          - lua_ver: 53
-            numbers: '64bit'  
-    runs-on: ubuntu-22.04
-
-    env:
-      LUA: ${{ matrix.lua_ver }}
-
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
-    - run: pip install pyserial
-      shell: bash
-    - run: sudo apt install srecord
-      shell: bash
-    - name: Build firmware
-      if: matrix.numbers == 'float'
-      run: make
-      shell: bash
-    - name: Build integral firmware
-      if: ${{ matrix.numbers == 'integral' }}
-      run: |
-        make EXTRA_CCFLAGS="-DLUA_NUMBER_INTEGRAL"
-        mv luac.cross.int luac.cross
-      shell: bash
-    - name: Build 64bit firmware
-      if: ${{ matrix.numbers == '64bit' }}
-      run: |
-        make EXTRA_CCFLAGS="-DLUA_NUMBER_64BITS"
-      shell: bash
-    - name: Upload luac.cross
-      if: ${{ success() }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}
-        path: luac.cross
-
-
-  build_win:
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - lua_ver: 51
-            numbers: float
-          - lua_ver: 51
-            numbers: integral
-          - lua_ver: 53
-            numbers: float
-          - lua_ver: 53
-            numbers: 64bit
-
-    env:
-      LUA: ${{ matrix.lua_ver }}
-      MSYSTEM: MINGW32
-      CHERE_INVOKING: 1
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: true
-
-    - name: Download ESP32 MSYS2 Toolchain
-      run: |
-        Invoke-WebRequest -Uri "https://media.githubusercontent.com/media/nodemcu/espressif-sdk-archive/refs/heads/master/esp32_win32_msys2_environment_and_toolchain-20181001.zip" -OutFile "esp32_toolchain.zip"
-
-    - name: Extract Toolchain
-      run: |
-        Expand-Archive -Path "esp32_toolchain.zip" -DestinationPath "D:\" -Force
     
-    - name: Setup Python venv
-      shell:  D:\msys32\usr\bin\bash.exe --login {0}
+    - uses: lukka/get-cmake@latest
+
+    - name: Build luac.cross.exe
       run: |
-        python -m venv .venv
-        . .venv/bin/activate
-        python -m pip install --upgrade pip
-        pip install pyserial
-
-    - name: Build firmware
-      shell:  D:\msys32\usr\bin\bash.exe --login {0}
-      run: |
-        . .venv/bin/activate
-
-        EXTRA_FLAGS=""
-        if [ "${{ matrix.numbers }}" = "integral" ]; then
-          EXTRA_FLAGS="-DLUA_NUMBER_INTEGRAL"
-        elif [ "${{ matrix.numbers }}" = "64bit" ]; then
-          EXTRA_FLAGS="-DLUA_NUMBER_64BITS"
-        fi
-        make EXTRA_CCFLAGS=$EXTRA_FLAGS
-        
-        if [ "${{ matrix.numbers }}" = "integral" ]; then
-          mv -f luac.cross.int.exe luac.cross.exe
-        fi
-
-    - name: Copy required DLLs
-      shell:  D:\msys32\usr\bin\bash.exe --login {0}
-      run: |
-        ldd luac.cross.exe | awk '{print $3}' | grep -vi "/c/windows" | xargs -I{} cp -v {} . || true
-        ls *.dll
-
-    - name: Check build items
-      shell:  D:\msys32\usr\bin\bash.exe --login {0}
-      run: |
-        ls -ll bin/0x00000.bin bin/0x10000.bin luac.cross.exe
-
+        cmake -B build --install-prefix $PWD
+        cmake --build build --config Release
+        cmake --install build 
+        gci bin
+        mv bin/luac.cross.exe .
+      shell: pwsh
+    
     - name: Upload luac.cross
       if: ${{ success() }}
       uses: actions/upload-artifact@v4
       with:
-        name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}_win
-        path: |
-          luac.cross.exe
-          *.dll
+        name: luac.cross_51_float_win
+        path: luac.cross.exe
+      
 
-  NTest:
+  # build:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       lua_ver: [51, 53]
+  #       numbers: ['float']
+  #       include:
+  #         - lua_ver: 51
+  #           numbers: 'integral'  
+  #         - lua_ver: 53
+  #           numbers: '64bit'  
+  #   runs-on: ubuntu-22.04
 
-    strategy:
-      fail-fast: false
-      matrix:
-        lua_ver: [51, 53]
-        numbers: ['float']
-        include:
-          - lua_ver: 51
-            numbers: 'integral'  
-          - lua_ver: 53
-            numbers: '64bit'  
-    needs: build
-    runs-on: ubuntu-22.04
+  #   env:
+  #     LUA: ${{ matrix.lua_ver }}
 
-    steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
-      with:
-        submodules: false
-    - name: Download luac.cross
-      uses: actions/download-artifact@v4
-      with:
-        name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}
-        path: ./
-    - name: Fix file permission
-      run: chmod +x luac.cross
-    - name: NTest selfcheck
-      run: |
-        cd tests/NTest
-        ../../luac.cross -e ../NTest/NTest_NTest.lua | tee log
-        grep "failed. 0" log
-      shell: bash
-    - name: NTest hosttests
-      run: |
-        cd tests
-        cp NTest/NTest.lua .
-        ../luac.cross -e NTest_lua.lua | tee log
-        (if grep  " ==>  " log ; then exit 1 ; fi)
-      shell: bash
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #     with:
+  #       submodules: true
+  #   - run: pip install pyserial
+  #     shell: bash
+  #   - run: sudo apt install srecord
+  #     shell: bash
+  #   - name: Build firmware
+  #     if: matrix.numbers == 'float'
+  #     run: make
+  #     shell: bash
+  #   - name: Build integral firmware
+  #     if: ${{ matrix.numbers == 'integral' }}
+  #     run: |
+  #       make EXTRA_CCFLAGS="-DLUA_NUMBER_INTEGRAL"
+  #       mv luac.cross.int luac.cross
+  #     shell: bash
+  #   - name: Build 64bit firmware
+  #     if: ${{ matrix.numbers == '64bit' }}
+  #     run: |
+  #       make EXTRA_CCFLAGS="-DLUA_NUMBER_64BITS"
+  #     shell: bash
+  #   - name: Upload luac.cross
+  #     if: ${{ success() }}
+  #     uses: actions/upload-artifact@v4
+  #     with:
+  #       name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}
+  #       path: luac.cross
 
 
-  NTest_win:
+  # build_win:
+  #   runs-on: windows-latest
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - lua_ver: 51
+  #           numbers: float
+  #         - lua_ver: 51
+  #           numbers: integral
+  #         - lua_ver: 53
+  #           numbers: float
+  #         - lua_ver: 53
+  #           numbers: 64bit
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - lua_ver: 51
-            numbers: 'float'
-          - lua_ver: 53
-            numbers: 'float'
-          - lua_ver: 51
-            numbers: 'integral'  
-          - lua_ver: 53
-            numbers: '64bit'  
+  #   env:
+  #     LUA: ${{ matrix.lua_ver }}
+  #     MSYSTEM: MINGW32
+  #     CHERE_INVOKING: 1
 
-    needs: build_win
-    runs-on: windows-latest
-    env:
-      MSYSTEM: MINGW32
-      CHERE_INVOKING: 1
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #     with:
+  #       submodules: true
 
-    steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
-      with:
-        submodules: false
-    - name: Download luac.cross
-      uses: actions/download-artifact@v4
-      with:
-        name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}_win
-        path: ./
-    - name: NTest selfcheck
-      run: |
-        cd tests/NTest
-        ../../luac.cross.exe -e ../NTest/NTest_NTest.lua | tee log
-        if ((gc log | Select-String "failed: 0") -eq $null) { 
-          Throw "Errors were found during tests";
-        }
-      shell: pwsh
+  #   - name: Download ESP32 MSYS2 Toolchain
+  #     run: |
+  #       Invoke-WebRequest -Uri "https://media.githubusercontent.com/media/nodemcu/espressif-sdk-archive/refs/heads/master/esp32_win32_msys2_environment_and_toolchain-20181001.zip" -OutFile "esp32_toolchain.zip"
+
+  #   - name: Extract Toolchain
+  #     run: |
+  #       Expand-Archive -Path "esp32_toolchain.zip" -DestinationPath "D:\" -Force
+    
+  #   - name: Setup Python venv
+  #     shell:  D:\msys32\usr\bin\bash.exe --login {0}
+  #     run: |
+  #       python -m venv .venv
+  #       . .venv/bin/activate
+  #       python -m pip install --upgrade pip
+  #       pip install pyserial
+
+  #   - name: Build firmware
+  #     shell:  D:\msys32\usr\bin\bash.exe --login {0}
+  #     run: |
+  #       . .venv/bin/activate
+
+  #       EXTRA_FLAGS=""
+  #       if [ "${{ matrix.numbers }}" = "integral" ]; then
+  #         EXTRA_FLAGS="-DLUA_NUMBER_INTEGRAL"
+  #       elif [ "${{ matrix.numbers }}" = "64bit" ]; then
+  #         EXTRA_FLAGS="-DLUA_NUMBER_64BITS"
+  #       fi
+  #       make EXTRA_CCFLAGS=$EXTRA_FLAGS
         
-    - name: NTest hosttests
-      run: |
-        cd tests
-        cp NTest/NTest.lua .
-        ../luac.cross.exe -e NTest_lua.lua | tee log
-        if ((gc log | Select-String " ==>  ") -ne $null) { 
-          Throw "Errors were found during tests";
-        }
+  #       if [ "${{ matrix.numbers }}" = "integral" ]; then
+  #         mv -f luac.cross.int.exe luac.cross.exe
+  #       fi
+
+  #   - name: Copy required DLLs
+  #     shell:  D:\msys32\usr\bin\bash.exe --login {0}
+  #     run: |
+  #       ldd luac.cross.exe | awk '{print $3}' | grep -vi "/c/windows" | xargs -I{} cp -v {} . || true
+  #       ls *.dll
+
+  #   - name: Check build items
+  #     shell:  D:\msys32\usr\bin\bash.exe --login {0}
+  #     run: |
+  #       ls -ll bin/0x00000.bin bin/0x10000.bin luac.cross.exe
+
+  #   - name: Upload luac.cross
+  #     if: ${{ success() }}
+  #     uses: actions/upload-artifact@v4
+  #     with:
+  #       name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}_win
+  #       path: |
+  #         luac.cross.exe
+  #         *.dll
+
+  # NTest:
+
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       lua_ver: [51, 53]
+  #       numbers: ['float']
+  #       include:
+  #         - lua_ver: 51
+  #           numbers: 'integral'  
+  #         - lua_ver: 53
+  #           numbers: '64bit'  
+  #   needs: build
+  #   runs-on: ubuntu-22.04
+
+  #   steps:
+  #   - name: Checkout repo
+  #     uses: actions/checkout@v4
+  #     with:
+  #       submodules: false
+  #   - name: Download luac.cross
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}
+  #       path: ./
+  #   - name: Fix file permission
+  #     run: chmod +x luac.cross
+  #   - name: NTest selfcheck
+  #     run: |
+  #       cd tests/NTest
+  #       ../../luac.cross -e ../NTest/NTest_NTest.lua | tee log
+  #       grep "failed. 0" log
+  #     shell: bash
+  #   - name: NTest hosttests
+  #     run: |
+  #       cd tests
+  #       cp NTest/NTest.lua .
+  #       ../luac.cross -e NTest_lua.lua | tee log
+  #       (if grep  " ==>  " log ; then exit 1 ; fi)
+  #     shell: bash
 
 
-  luacheck:
+  # NTest_win:
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: 'linux'
-            vm: 'ubuntu-22.04'
-          - os: 'windows'
-            vm: 'windows-latest'
-    runs-on: ${{ matrix.vm }} 
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - lua_ver: 51
+  #           numbers: 'float'
+  #         - lua_ver: 53
+  #           numbers: 'float'
+  #         - lua_ver: 51
+  #           numbers: 'integral'  
+  #         - lua_ver: 53
+  #           numbers: '64bit'  
+
+  #   needs: build_win
+  #   runs-on: windows-latest
+  #   env:
+  #     MSYSTEM: MINGW32
+  #     CHERE_INVOKING: 1
+
+  #   steps:
+  #   - name: Checkout repo
+  #     uses: actions/checkout@v4
+  #     with:
+  #       submodules: false
+  #   - name: Download luac.cross
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}_win
+  #       path: ./
+  #   - name: NTest selfcheck
+  #     run: |
+  #       cd tests/NTest
+  #       ../../luac.cross.exe -e ../NTest/NTest_NTest.lua | tee log
+  #       if ((gc log | Select-String "failed: 0") -eq $null) { 
+  #         Throw "Errors were found during tests";
+  #       }
+  #     shell: pwsh
+        
+  #   - name: NTest hosttests
+  #     run: |
+  #       cd tests
+  #       cp NTest/NTest.lua .
+  #       ../luac.cross.exe -e NTest_lua.lua | tee log
+  #       if ((gc log | Select-String " ==>  ") -ne $null) { 
+  #         Throw "Errors were found during tests";
+  #       }
+
+
+  # luacheck:
+
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - os: 'linux'
+  #           vm: 'ubuntu-22.04'
+  #         - os: 'windows'
+  #           vm: 'windows-latest'
+  #   runs-on: ${{ matrix.vm }} 
       
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: false
-    - run: sudo apt install luarocks
-      if : matrix.os == 'linux'
-      shell: bash
-    - name: get luacheck.exe  # is also done in the travis script but in this action it does not run in bash
-      if : matrix.os == 'windows'
-      run: |
-        mkdir cache
-        C:msys64\usr\bin\wget.exe --tries=5 --timeout=10 --waitretry=10 --read-timeout=10 --retry-connrefused -O cache/luacheck.exe https://github.com/mpeterv/luacheck/releases/download/0.23.0/luacheck.exe
-      shell: cmd
-    - name: luacheck
-      run: |
-        PATH="/C/Program\ Files/Git/usr/bin:${PATH}"
-        ./tools/travis/run-luacheck-${{ matrix.os }}.sh
-      shell: bash
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #     with:
+  #       submodules: false
+  #   - run: sudo apt install luarocks
+  #     if : matrix.os == 'linux'
+  #     shell: bash
+  #   - name: get luacheck.exe  # is also done in the travis script but in this action it does not run in bash
+  #     if : matrix.os == 'windows'
+  #     run: |
+  #       mkdir cache
+  #       C:msys64\usr\bin\wget.exe --tries=5 --timeout=10 --waitretry=10 --read-timeout=10 --retry-connrefused -O cache/luacheck.exe https://github.com/mpeterv/luacheck/releases/download/0.23.0/luacheck.exe
+  #     shell: cmd
+  #   - name: luacheck
+  #     run: |
+  #       PATH="/C/Program\ Files/Git/usr/bin:${PATH}"
+  #       ./tools/travis/run-luacheck-${{ matrix.os }}.sh
+  #     shell: bash
 
 
 
-  doc_check:
+  # doc_check:
 
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-22.04
+  #   strategy:
+  #     fail-fast: false
+  #   runs-on: ubuntu-22.04
       
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: false
-    - name: all_modules_linked
-      run: ./tools/check_docs_module_linkage.sh
-      shell: bash
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #     with:
+  #       submodules: false
+  #   - name: all_modules_linked
+  #     run: ./tools/check_docs_module_linkage.sh
+  #     shell: bash
 
