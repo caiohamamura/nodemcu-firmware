@@ -1,6 +1,11 @@
 #ifndef APP_MODULES_PIXBUF_H_
 #define APP_MODULES_PIXBUF_H_
 
+#if defined(_MSC_VER)
+typedef int ssize_t;
+#define bzero(ptr, size) memset(ptr, 0, size)
+#endif
+
 typedef struct pixbuf {
   const size_t npix;
   const size_t nchan;
