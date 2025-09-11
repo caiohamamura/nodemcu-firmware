@@ -9,7 +9,11 @@
 
 #include "lprefix.h"
 
+#ifdef WIN32
+#include <malloc.h>
+#else
 #include <alloca.h>
+#endif
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
