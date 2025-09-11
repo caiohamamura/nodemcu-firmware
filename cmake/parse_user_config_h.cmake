@@ -1,0 +1,17 @@
+set(HOST_C_COMPILER ${CMAKE_C_COMPILER})
+include(${CMAKE_CURRENT_LIST_DIR}/xtensa-esp8266-toolchain.cmake)
+
+message(STATUS "CMAKE_C_COMPILER: ${CMAKE_C_COMPILER}")
+
+execute_process(
+    COMMAND ${CMAKE_C_COMPILER} -E -dM "${CMAKE_CURRENT_LIST_DIR}/../app/include/user_config.h"
+    OUTPUT_VARIABLE USER_CONFIG_CONTENT
+) 
+
+# Split content into lines
+string(REPLACE "\n" ";" USER_CONFIG_CONTENT "${USER_CONFIG_CONTENT}")
+
+# Process each line
+list(TRANSFORM USER_CONFIG_CONTENT REPLACE ".*define *([^ ;]+).*" "\\1" OUTPUT_VARIABLE USER_CONFIG_CONTENT)
+set(CMAKE_C_COMPILER ${HOST_C_COMPILER})
+set(USER_CONFIG ${USER_CONFIG_CONTENT})
