@@ -2,6 +2,7 @@
 #include "lauxlib.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 #include "pixbuf.h"
 #define PIXBUF_METATABLE "pixbuf.buf"
