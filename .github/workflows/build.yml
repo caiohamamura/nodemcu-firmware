@@ -2,12 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [ release ]
+    branches: [ release, cmake ]
   pull_request:
     branches: [ dev, release ]
 
 jobs:
-
+      
 
   build:
     strategy:
@@ -15,11 +15,20 @@ jobs:
       matrix:
         lua_ver: [51, 53]
         numbers: ['float']
+        build: ['make', 'cmake']
         include:
           - lua_ver: 51
-            numbers: 'integral'  
+            numbers: 'integral'
+            build: make
+          - lua_ver: 51
+            numbers: 'integral'
+            build: cmake    
           - lua_ver: 53
-            numbers: '64bit'  
+            numbers: '64bit'
+            build: make
+          - lua_ver: 53
+            numbers: '64bit'
+            build: cmake
     runs-on: ubuntu-22.04
 
     env:
@@ -31,33 +40,35 @@ jobs:
         submodules: true
     - run: pip install pyserial
       shell: bash
-    - run: sudo apt install srecord
-      shell: bash
     - name: Build firmware
-      if: matrix.numbers == 'float'
-      run: make
-      shell: bash
-    - name: Build integral firmware
-      if: ${{ matrix.numbers == 'integral' }}
       run: |
-        make EXTRA_CCFLAGS="-DLUA_NUMBER_INTEGRAL"
-        mv luac.cross.int luac.cross
-      shell: bash
-    - name: Build 64bit firmware
-      if: ${{ matrix.numbers == '64bit' }}
-      run: |
-        make EXTRA_CCFLAGS="-DLUA_NUMBER_64BITS"
+        EXTRA_CCFLAGS=""
+        if [ "${{ matrix.numbers }}" == "integral" ]; then
+          EXTRA_CCFLAGS="-DLUA_NUMBER_INTEGRAL=ON"
+        elif [ "${{ matrix.numbers }}" == "64bit" ]; then
+          EXTRA_CCFLAGS="-DLUA_NUMBER_64BITS=ON"
+        fi
+        echo $EXTRA_CCFLAGS
+
+        if [ "${{ matrix.build }}" == "make" ]; then
+           make EXTRA_CCFLAGS=$EXTRA_CCFLAGS
+           mv -f luac.cross.int luac.cross 2>/dev/null || true 
+        else 
+          cmake -B build -GNinja -DLUA=${{ matrix.lua_ver }} $EXTRA_CCFLAGS .
+          cmake --build build -j12
+          cmake --install build --prefix .
+          ls -ll bin
+          mv -f bin/luac.cross.int bin/luac.cross 2>/dev/null || true
+          mv bin/luac.cross luac.cross
+        fi
       shell: bash
     - name: Upload luac.cross
       if: ${{ success() }}
       uses: actions/upload-artifact@v4
       with:
-        name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}
+        name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}_${{ matrix.build }}
         path: luac.cross
 
-# The files in the 'msvc' folder would need to be updated to be compatible with VS 2022.
-# Sample job (that failed): https://github.com/nodemcu/nodemcu-firmware/actions/runs/17306868602/job/49131917376#step:3:153
-# => disable the Windows jobs for now
 
   build_win:
     runs-on: windows-latest
@@ -74,68 +85,35 @@ jobs:
           - lua_ver: 53
             numbers: 64bit
 
-    env:
-      LUA: ${{ matrix.lua_ver }}
-      MSYSTEM: MINGW32
-      CHERE_INVOKING: 1
-
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: true
 
-    - name: Download ESP32 MSYS2 Toolchain
-      run: |
-        Invoke-WebRequest -Uri "https://media.githubusercontent.com/media/nodemcu/espressif-sdk-archive/refs/heads/master/esp32_win32_msys2_environment_and_toolchain-20181001.zip" -OutFile "esp32_toolchain.zip"
-
-    - name: Extract Toolchain
-      run: |
-        Expand-Archive -Path "esp32_toolchain.zip" -DestinationPath "D:\" -Force
-    
-    - name: Setup Python venv
-      shell:  D:\msys32\usr\bin\bash.exe --login {0}
-      run: |
-        python -m venv .venv
-        . .venv/bin/activate
-        python -m pip install --upgrade pip
-        pip install pyserial
-
-    - name: Build firmware
-      shell:  D:\msys32\usr\bin\bash.exe --login {0}
-      run: |
-        . .venv/bin/activate
-
-        EXTRA_FLAGS=""
-        if [ "${{ matrix.numbers }}" = "integral" ]; then
-          EXTRA_FLAGS="-DLUA_NUMBER_INTEGRAL"
-        elif [ "${{ matrix.numbers }}" = "64bit" ]; then
-          EXTRA_FLAGS="-DLUA_NUMBER_64BITS"
-        fi
-        make EXTRA_CCFLAGS=$EXTRA_FLAGS
+    - name: Install pyserial
+      run: pip install pyserial
         
-        if [ "${{ matrix.numbers }}" = "integral" ]; then
-          mv -f luac.cross.int.exe luac.cross.exe
-        fi
-
-    - name: Copy required DLLs
-      shell:  D:\msys32\usr\bin\bash.exe --login {0}
+    - name: Build luac.cross.exe
       run: |
-        ldd luac.cross.exe | awk '{print $3}' | grep -vi "/c/windows" | xargs -I{} cp -v {} . || true
-        ls *.dll
-
-    - name: Check build items
-      shell:  D:\msys32\usr\bin\bash.exe --login {0}
-      run: |
-        ls -ll bin/0x00000.bin bin/0x10000.bin luac.cross.exe
-
+        $extra_flags = @{
+          "float" = ""
+          "integral" = "-DLUA_NUMBER_INTEGRAL=ON"
+          "64bit" = "-DLUA_NUMBER_64BITS=ON"
+        }
+        cmake -B build $extra_flags["${{ matrix.numbers }}"] -DLUA=${{ matrix.lua_ver }}
+        cmake --build build --config Release
+        cmake --install build --prefix .
+        gci bin
+        mv bin/luac.cross.int.exe bin/luac.cross.exe -ErrorAction SilentlyContinue
+        mv bin/luac.cross.exe .
+      shell: pwsh
+    
     - name: Upload luac.cross
       if: ${{ success() }}
       uses: actions/upload-artifact@v4
       with:
         name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}_win
-        path: |
-          luac.cross.exe
-          *.dll
+        path: luac.cross.exe
 
   NTest:
 
@@ -144,11 +122,20 @@ jobs:
       matrix:
         lua_ver: [51, 53]
         numbers: ['float']
+        build: ['make', 'cmake']
         include:
           - lua_ver: 51
-            numbers: 'integral'  
+            numbers: 'integral' 
+            build: make 
+          - lua_ver: 51
+            numbers: 'integral'
+            build: cmake
           - lua_ver: 53
             numbers: '64bit'  
+            build: make
+          - lua_ver: 53
+            numbers: '64bit'
+            build: cmake
     needs: build
     runs-on: ubuntu-22.04
 
@@ -160,7 +147,7 @@ jobs:
     - name: Download luac.cross
       uses: actions/download-artifact@v4
       with:
-        name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}
+        name: luac.cross_${{ matrix.lua_ver }}_${{ matrix.numbers }}_${{ matrix.build }}
         path: ./
     - name: Fix file permission
       run: chmod +x luac.cross
@@ -196,9 +183,6 @@ jobs:
 
     needs: build_win
     runs-on: windows-latest
-    env:
-      MSYSTEM: MINGW32
-      CHERE_INVOKING: 1
 
     steps:
     - name: Checkout repo
