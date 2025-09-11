@@ -54,6 +54,7 @@
   #include <stdint.h>
   #include <stdlib.h>
   #include <stdio.h>
+  #include <string.h>
   #include "platform.h"
   #include "user_interface.h"
   #include "task/task.h"

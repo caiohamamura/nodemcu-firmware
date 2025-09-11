@@ -17,6 +17,6 @@ bool fpm_is_open(void);
 bool fpm_rf_is_closed(void);
 uint8 get_fpm_auto_sleep_flag(void);
 
-
+extern void system_station_got_ip_set(ip_addr_t* ip_addr, ip_addr_t* sn_mask, ip_addr_t* gw_addr);
 
 #endif /* SDK_OVERRIDES_INCLUDE_USER_INTERFACE_H_ */

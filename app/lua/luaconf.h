@@ -182,7 +182,7 @@
 #endif // #if !defined LUA_NUMBER_INTEGRAL
 
 #ifdef LUA_NUMBER_64BITS
-#error Lua 5.1 does not support 64 bit inetegers.
+#error Lua 5.1 does not support 64 bit integers.
 #endif
 
 /*

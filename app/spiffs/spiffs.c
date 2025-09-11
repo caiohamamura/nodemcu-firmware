@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "platform.h"
 #include "spiffs.h"
+#include <string.h>
 
 /*
  * With the intoduction of a unified FatFS and SPIFFS support (#1397), the SPIFFS
