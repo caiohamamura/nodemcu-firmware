@@ -231,13 +231,15 @@ static int pixbuf_get_lua(lua_State *L) {
 
   luaL_argcheck(L, led >= 0 && led < buffer->npix, 2, "index out of range");
 
-  uint8_t tmp[channels];
+  uint8_t *tmp = malloc(channels * sizeof(uint8_t));
   memcpy(tmp, &buffer->values[channels*led], channels);
 
   for (size_t i = 0; i < channels; i++)
   {
     lua_pushinteger(L, tmp[i]);
   }
+
+  free(tmp);
 
   return channels;
 }
@@ -372,7 +374,7 @@ static int pixbuf_mix_core(lua_State *L, size_t ibits) {
 
   int pos = 2;
   size_t n_sources = (lua_gettop(L) - 1) / 2;
-  struct mix_source sources[n_sources];
+  struct mix_source *sources = malloc(sizeof(struct mix_source) * n_sources);
 
   if (n_sources == 0) {
     lua_settop(L, 1);
@@ -397,6 +399,8 @@ static int pixbuf_mix_core(lua_State *L, size_t ibits) {
   } else {
     pixbuf_mix_raw(buffer, n_sources, sources);
   }
+
+  free(sources);
 
   lua_settop(L, 1);
   return 1;
