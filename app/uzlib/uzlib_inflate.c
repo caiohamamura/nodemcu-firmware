@@ -49,7 +49,9 @@
 #define DBG_ADD_COUNT(n,m) (debugCounts[n]+=m)
 int debugCounts[20];
 #else
-#define NDEBUG
+#ifndef NDEBUG
+  #define NDEBUG
+#endif
 #define DBG_PRINT(...)
 #define DBG_COUNT(n)
 #define DBG_ADD_COUNT(n,m)
