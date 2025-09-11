@@ -15,4 +15,7 @@ int ets_vsprintf (char *d, const char *s, va_list ap);
 
 extern ETSTimer *timer_list;
 
+void ets_wdt_enable(void);
+void ets_wdt_disable(void);
+
 #endif /* SDK_OVERRIDES_INCLUDE_ETS_SYS_H_ */

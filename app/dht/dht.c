@@ -28,9 +28,10 @@
 //
 // #define NODE_DEBUG
 
+#include <stdio.h>
+#include <string.h>
 #include "user_interface.h"
 #include "platform.h"
-#include <stdio.h>
 #include "dht.h"
 
 #ifndef LOW
