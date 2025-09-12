@@ -107,7 +107,7 @@ jobs:
         cmake -B build %EXTRA_FLAGS% -DLUA=%LUA_VER% -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
         cmake --build build --config Release -j12
         cmake --install build --prefix .
-        gci bin
+        dir bin
         move /y bin\luac.cross.int.exe bin\luac.cross.exe 2>nul
         move /y bin\luac.cross.exe .
       shell: cmd
