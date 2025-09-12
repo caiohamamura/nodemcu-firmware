@@ -132,5 +132,4 @@ target_link_libraries(${BINARY_NAME} PRIVATE
     ${LINK_LIBRARIES}
 )
 
-
 install(TARGETS ${BINARY_NAME})
