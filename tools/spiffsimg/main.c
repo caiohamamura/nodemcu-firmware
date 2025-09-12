@@ -36,18 +36,22 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
-#ifdef _MSC_VER
-#include "getopt.h"		/* local copy from MingW project */
-#include <io.h>
-#define STDIN_FILENO 0
-#define STDOUT_FILENO 1
-#define STDERR_FILENO 2
-typedef ptrdiff_t off_t;
-#else
-#include <unistd.h>
-#include <getopt.h>
-#include <sys/mman.h>
+
+#ifdef _MSC_VER // Identifies MSVC cl.exe compiler
+  typedef ptrdiff_t off_t;
 #endif
+#ifdef _WIN32 // Any windows compiler
+  #include <io.h>
+  #include "getopt.h"		/* local copy from MingW project */
+  #define STDIN_FILENO 0
+  #define STDOUT_FILENO 1
+  #define STDERR_FILENO 2
+#else
+  #include <getopt.h>  
+  #include <unistd.h>
+  #include <sys/mman.h>
+#endif
+
 #include <fcntl.h>
 #include <errno.h>
 #include "spiffs.h"
@@ -267,10 +271,10 @@ int main (int argc, char *argv[])
   }
 
   if (!fname) {
-    die("Need a filename");
+    die("Need a filename"); // Identifies cl.exe
   }
 
-#ifdef _MSC_VER
+#ifdef _WIN32
   _set_fmode( _O_BINARY );	//change default open mode to binary rather than text
 #endif
   int fd;
@@ -335,10 +339,10 @@ int main (int argc, char *argv[])
     }
   }
 
-  if (sz & (0x1000 -1))
+  if (sz & (0x1000 -1)) // Identifies cl.exe
     die ("file size not multiple of erase block size");
 
-#ifdef _MSC_VER
+#ifdef _WIN32
   //We don't have a mmap(), so we simply allocate a file buffer we write out
   //at the end of the program.  This also means that we need to let the program
   //end normally (i.e. not via Ctrl-C) or else that final write will not happen.
@@ -414,10 +418,10 @@ int main (int argc, char *argv[])
         continue;
       if (strcmp (line, "ls") == 0)
         list ();
-      else if (strncmp (line, "import ", 7) == 0)
+      else if (strncmp (line, "import ", 7) == 0) // Identifies cl.exe
       {
         char *src = 0, *dst = 0;
-#ifdef _MSC_VER
+#ifdef _WIN32
         src = (char*)malloc(260 + 1);	//MAX_PATH
         dst = (char*)malloc( 260 + 1 );
         if (sscanf (line +7, " %260s %260s", src, dst) != 2)
@@ -433,10 +437,10 @@ int main (int argc, char *argv[])
         free (src);
         free (dst);
       }
-      else if (strncmp (line, "export ", 7) == 0)
+      else if (strncmp (line, "export ", 7) == 0) // Identifies cl.exe
       {
         char *src = 0, *dst = 0;
-#ifdef _MSC_VER
+#ifdef _WIN32
         src = (char*)malloc( 260 + 1 );	//MAX_PATH
         dst = (char*)malloc( 260 + 1 );
         if ( sscanf( line + 7, " %260s %260s", src, dst ) != 2 )
@@ -484,10 +488,10 @@ int main (int argc, char *argv[])
     }
     if (in == stdin)
       printf ("\n");
-  }
+  } // Identifies cl.exe
 
   SPIFFS_unmount (&fs);
-#ifdef _MSC_VER
+#ifdef _WIN32
   if ( lseek( fd, 0, SEEK_SET ) == -1 )
     die( "lseek" );
   if ( write( fd, flash, sz ) != sz )
