@@ -104,7 +104,7 @@ jobs:
         ) else if "${{ matrix.numbers }}"=="64bit" (
           set "EXTRA_FLAGS=-DLUA_NUMBER_64BITS=ON"
         )
-        cmake -B build %EXTRA_FLAGS% -DLUA=%LUA_VER% -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
+        cmake -B build %EXTRA_FLAGS% -DLUA=${{ matrix.lua_ver }} -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
         cmake --build build --config Release -j12
         cmake --install build --prefix .
         dir bin
