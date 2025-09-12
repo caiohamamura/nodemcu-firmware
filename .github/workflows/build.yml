@@ -97,11 +97,11 @@ jobs:
       run: |
         call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
         set "EXTRA_FLAGS="
-        if "%NUMBERS%"=="float" (
+        if "${{ matrix.numbers }}"=="float" (
           set "EXTRA_FLAGS="
-        ) else if "%NUMBERS%"=="integral" (
+        ) else if "${{ matrix.numbers }}"=="integral" (
           set "EXTRA_FLAGS=-DLUA_NUMBER_INTEGRAL=ON"
-        ) else if "%NUMBERS%"=="64bit" (
+        ) else if "${{ matrix.numbers }}"=="64bit" (
           set "EXTRA_FLAGS=-DLUA_NUMBER_64BITS=ON"
         )
         cmake -B build %EXTRA_FLAGS% -DLUA=%LUA_VER% -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
