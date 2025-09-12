@@ -71,7 +71,7 @@ jobs:
 
 
   build_win:
-    runs-on: windows-latest
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
@@ -95,18 +95,22 @@ jobs:
         
     - name: Build luac.cross.exe
       run: |
-        $extra_flags = @{
-          "float" = ""
-          "integral" = "-DLUA_NUMBER_INTEGRAL=ON"
-          "64bit" = "-DLUA_NUMBER_64BITS=ON"
-        }
-        cmake -B build $extra_flags["${{ matrix.numbers }}"] -DLUA=${{ matrix.lua_ver }} -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        set "EXTRA_FLAGS="
+        if "%NUMBERS%"=="float" (
+          set "EXTRA_FLAGS="
+        ) else if "%NUMBERS%"=="integral" (
+          set "EXTRA_FLAGS=-DLUA_NUMBER_INTEGRAL=ON"
+        ) else if "%NUMBERS%"=="64bit" (
+          set "EXTRA_FLAGS=-DLUA_NUMBER_64BITS=ON"
+        )
+        cmake -B build %EXTRA_FLAGS% -DLUA=%LUA_VER% -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
         cmake --build build --config Release -j12
         cmake --install build --prefix .
         gci bin
-        mv bin/luac.cross.int.exe bin/luac.cross.exe -ErrorAction SilentlyContinue
-        mv bin/luac.cross.exe .
-      shell: pwsh
+        move /y bin\luac.cross.int.exe bin\luac.cross.exe 2>nul
+        move /y bin\luac.cross.exe .
+      shell: cmd
     
     - name: Upload luac.cross
       if: ${{ success() }}
