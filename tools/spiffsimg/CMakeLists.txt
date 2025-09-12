@@ -22,7 +22,7 @@ set(SOURCES
 set(BINARY_NAME "spiffsimg")
 
 # --- Executable ---
-add_executable(${BINARY_NAME} ${SOURCES} ${HEADERS})
+add_executable(${BINARY_NAME} ${SOURCES})
 
 
 target_compile_definitions(${BINARY_NAME} PRIVATE
@@ -54,13 +54,9 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     )
 endif()
 
-if(MSVC)
-    add_definitions(/FI"spiffs_typedefs.h")
-else()
-    # GCC or Clang
-    add_definitions(-include spiffs_typedefs.h)
-endif()
-
+target_precompile_headers(${BINARY_NAME} PRIVATE
+    spiffs_typedefs.h
+)
 
 install(TARGETS ${BINARY_NAME}
 )
