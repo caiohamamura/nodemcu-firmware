@@ -100,8 +100,8 @@ jobs:
           "integral" = "-DLUA_NUMBER_INTEGRAL=ON"
           "64bit" = "-DLUA_NUMBER_64BITS=ON"
         }
-        cmake -B build $extra_flags["${{ matrix.numbers }}"] -DLUA=${{ matrix.lua_ver }}
-        cmake --build build --config Release
+        cmake -B build $extra_flags["${{ matrix.numbers }}"] -DLUA=${{ matrix.lua_ver }} -GNinja
+        cmake --build build --config Release -j12
         cmake --install build --prefix .
         gci bin
         mv bin/luac.cross.int.exe bin/luac.cross.exe -ErrorAction SilentlyContinue

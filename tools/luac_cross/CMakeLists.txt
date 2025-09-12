@@ -1,9 +1,13 @@
-cmake_minimum_required(VERSION 3.10)
-project(luac_cross C)
+cmake_minimum_required(VERSION 3.24)
 
 # Check if is root configure
 if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
+    project(luac_cross C)
     include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/parse_flags.cmake)
+endif()
+
+if(NOT CMAKE_BUILD_TYPE) 
+    set(CMAKE_BUILD_TYPE "Release")
 endif()
 
 set(USER_CONFIG "")
@@ -115,9 +119,14 @@ target_compile_definitions(${BINARY_NAME} PRIVATE
     ${COMPILE_DEFS}
 )
 
-target_compile_options(${BINARY_NAME} PRIVATE
-    -Wall
-)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(${BINARY_NAME} PRIVATE
+        LUA_CROSS_COMPILER
+        LUA_DEBUG_BUILD
+        DEVELOPMENT_TOOLS
+        DDEVELOPMENT_USE_GDB
+    )
+endif()
 
 target_link_libraries(${BINARY_NAME} PRIVATE
     ${LINK_LIBRARIES}
