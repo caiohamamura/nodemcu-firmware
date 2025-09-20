@@ -37,6 +37,11 @@ include(ExternalProject)
 
 message(STATUS "Cmake generator is ${CMAKE_GENERATOR}")
 
+set(VERBOSE_FLAGS "")
+if(CMAKE_VERBOSE_MAKEFILE)
+    set(VERBOSE_FLAGS "-v")
+endif()
+
 set(CURRENT_BINARY_DIR ${CMAKE_BINARY_DIR}/firmware_build)
 ExternalProject_Add(firmware
     SOURCE_DIR      ${CMAKE_SOURCE_DIR}/app
@@ -46,7 +51,8 @@ ExternalProject_Add(firmware
         -DCMAKE_PROGRAM_PATH=${CMAKE_PROGRAM_PATH}
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/xtensa-esp8266-toolchain.cmake
-    BUILD_COMMAND   ${CMAKE_COMMAND} --build ${CURRENT_BINARY_DIR} ${BUILD_CONFIG} ${PARALLEL_FLAG}
+        -DCMAKE_VERBOSE_MAKEFILE=${CMAKE_VERBOSE_MAKEFILE}
+    BUILD_COMMAND   ${CMAKE_COMMAND} --build ${CURRENT_BINARY_DIR} ${BUILD_CONFIG} ${PARALLEL_FLAG} ${VERBOSE_FLAGS}
     INSTALL_COMMAND ${CMAKE_COMMAND} --install ${CURRENT_BINARY_DIR}
 )
 
