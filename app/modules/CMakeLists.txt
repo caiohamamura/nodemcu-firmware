@@ -13,6 +13,10 @@ target_include_directories(${LIBNAME} PRIVATE
     $<TARGET_PROPERTY:platform,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
+target_compile_definitions(${LIBNAME} PRIVATE
+    MBEDTLS_USER_CONFIG_FILE=\"user_mbedtls.h\"
+)
+
 target_compile_options(${LIBNAME} PRIVATE
     -Wimplicit
     -std=gnu11
