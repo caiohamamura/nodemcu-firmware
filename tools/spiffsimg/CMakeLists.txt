@@ -9,6 +9,10 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 
+if (CMAKE_C_COMPILER_ID MATCHES "MSVC")
+    add_compile_definitions($<$<CONFIG:Release>:/W0>)
+endif()
+
 set(APP_DIR ../../app)
 set(SOURCES
     main.c

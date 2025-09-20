@@ -24,4 +24,13 @@ if (LUA_NUMBER_64BITS)
     add_compile_definitions(LUA_NUMBER_64BITS)
 endif()
 
+# Silence warnings for Release configuration
+if (CMAKE_C_COMPILER_ID MATCHES "MSVC")
+    add_compile_options($<$<CONFIG:Release>:/W0>)
+else()
+    add_compile_options(
+        $<$<CONFIG:Release>:-w>
+    )
+endif()
+
 set(RUNTIME_DESTINATION "bin" CACHE STRING "Destination for runtime files")

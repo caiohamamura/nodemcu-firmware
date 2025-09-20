@@ -10,6 +10,10 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 
+if (CMAKE_C_COMPILER_ID MATCHES "MSVC")
+    add_compile_definitions($<$<CONFIG:Release>:/W0>)
+endif()
+
 set(USER_CONFIG "")
 include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/parse_user_config_h.cmake)
 set(BINARY_NAME "luac.cross")
@@ -105,6 +109,12 @@ endif()
 # --- Executable ---
 add_executable(${BINARY_NAME} ${SOURCES})
 
+
+if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    target_include_directories(${BINARY_NAME} PRIVATE
+        windows_include
+    )
+endif()
 
 # --- Include Directories ---
 target_include_directories(${BINARY_NAME} PRIVATE
