@@ -105,7 +105,7 @@ jobs:
           set "EXTRA_FLAGS=-DLUA_NUMBER_64BITS=ON"
         )
         cmake -B build %EXTRA_FLAGS% -DLUA=${{ matrix.lua_ver }} -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
-        cmake --build build --config Release -j12
+        cmake --build build --config Release --parallel
         cmake --install build --prefix .
         dir bin
         move /y bin\luac.cross.int.exe bin\luac.cross.exe 2>nul
