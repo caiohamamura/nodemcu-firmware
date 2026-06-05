@@ -42,6 +42,9 @@ if(CMAKE_VERBOSE_MAKEFILE)
     set(VERBOSE_FLAGS "-v")
 endif()
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(NODEELF2IMAGE_PYTHON ${Python3_EXECUTABLE})
+
 set(CURRENT_BINARY_DIR ${CMAKE_BINARY_DIR}/firmware_build)
 ExternalProject_Add(firmware
     SOURCE_DIR      ${CMAKE_SOURCE_DIR}/app
@@ -59,8 +62,8 @@ ExternalProject_Add(firmware
 add_custom_command(
     OUTPUT ${CMAKE_SOURCE_DIR}/bin/0x00000.bin
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin
-    COMMAND python tools/toolchains/esptool.py elf2image --flash_mode dio --flash_freq 40m "${CURRENT_BINARY_DIR}/app.elf" -o "${CMAKE_SOURCE_DIR}/bin/"
-    DEPENDS firmware
+    COMMAND ${NODEELF2IMAGE_PYTHON} tools/toolchains/esptool.py elf2image --flash_mode dio --flash_freq 40m "${CURRENT_BINARY_DIR}/app.elf" -o "${CMAKE_SOURCE_DIR}/bin/"
+    DEPENDS firmware ${CURRENT_BINARY_DIR}/app.elf
     COMMENT "Running firmware transformer"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
