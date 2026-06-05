@@ -1,5 +1,8 @@
 set(LIBNAME mbedtls)
 file(GLOB LIB_SRCS "*/*.c")
+list(FILTER LIB_SRCS EXCLUDE REGEX ".*/library/psa_.*\\.c$")
+list(FILTER LIB_SRCS EXCLUDE REGEX ".*/library/mps_.*\\.c$")
+list(FILTER LIB_SRCS EXCLUDE REGEX ".*/library/ssl_tls13_keys\\.c$")
 
 add_library(${LIBNAME} STATIC ${LIB_SRCS})
 
