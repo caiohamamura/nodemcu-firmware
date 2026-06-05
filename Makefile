@@ -107,11 +107,11 @@ ifeq ($(OS),Windows_NT)
     NM = xtensa-lx106-elf-nm
     CPP = xtensa-lx106-elf-cpp
     OBJCOPY = xtensa-lx106-elf-objcopy
-	TOOLCHAIN_VERSION = 2020r3
-	GCCTOOLCHAIN      = xtensa-lx106-elf-gcc8_4_0-esp-$(TOOLCHAIN_VERSION)-win32
+	TOOLCHAIN_VERSION = 1.22.0-88-gde0bdc1-4.8.5
+	GCCTOOLCHAIN      = xtensa-lx106-elf-win32-$(TOOLCHAIN_VERSION)
 	TOOLCHAIN_ROOT    = $(TOP_DIR)/tools/toolchains/esp8266-$(GCCTOOLCHAIN)
-	ESPRESSIF_URL     = https://media.githubusercontent.com/media/nodemcu/espressif-sdk-archive/refs/heads/master
-	TOOLCHAIN_EXT     = zip
+	ESPRESSIF_URL     = https://dl.espressif.com/dl
+	TOOLCHAIN_EXT     = tar.gz
 	TOOLCHAIN_URL     = $(ESPRESSIF_URL)/$(GCCTOOLCHAIN).$(TOOLCHAIN_EXT)
 	WGET              = wget --tries=10 --timeout=15 --waitretry=30 --read-timeout=20 --retry-connrefused
 	export PATH      := $(PATH):$(TOOLCHAIN_ROOT)/bin
@@ -290,6 +290,9 @@ $(TOOLCHAIN_ROOT)/bin: $(TOP_DIR)/cache/toolchain-esp8266-$(GCCTOOLCHAIN).$(TOOL
 	$(summary) EXTRACT $(patsubst $(TOP_DIR)/%,%,$<)
     ifeq ($(TOOLCHAIN_EXT),tar.xz)
 	    tar -xJf $< -C $(TOP_DIR)/tools/toolchains/
+    else ifeq ($(TOOLCHAIN_EXT),tar.gz)
+	    tar -xzf $< -C $(TOP_DIR)/tools/toolchains/
+		mv $(TOP_DIR)/tools/toolchains/xtensa-lx106-elf $(TOOLCHAIN_ROOT)
     else ifeq ($(TOOLCHAIN_EXT),zip)
 	    unzip -q $< -d $(TOP_DIR)/tools/toolchains/
 		mv $(TOP_DIR)/tools/toolchains/xtensa-lx106-elf $(TOOLCHAIN_ROOT)
