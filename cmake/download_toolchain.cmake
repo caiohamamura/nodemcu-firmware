@@ -6,11 +6,11 @@ set(WIN_SYSTEMS
     msys
 )
 if(CMAKE_HOST_SYSTEM_NAME_LOWER IN_LIST WIN_SYSTEMS)
-    set(TOOLCHAIN "xtensa-lx106-elf-gcc8_4_0-esp-2020r3-win32")
-    set(TOOLCHAIN_URL "https://media.githubusercontent.com/media/nodemcu/espressif-sdk-archive/refs/heads/master/${TOOLCHAIN}.zip")
+    set(TOOLCHAIN "xtensa-lx106-elf-win32-1.22.0-88-gde0bdc1-4.8.5")
+    set(TOOLCHAIN_URL "https://dl.espressif.com/dl/${TOOLCHAIN}.tar.gz")
     set(TOOLCHAIN_EXTRACT_DIR "${CMAKE_SOURCE_DIR}/tools/toolchains/esp8266-${TOOLCHAIN}")
     set(TOOLCHAIN_NAME "esp8266-toolchain-windows")
-    set(URL_HASH "SHA256=733B4DA8723471B430F8692B943A7917AD5920B98E7BC6BDF9FB7617182C2B33")
+    set(URL_HASH "SHA256=83B166B7A3C4023CF65CF1C3424FEC07F0C6EC10956485D86CC22197495F1C33")
 else()
     set(TOOLCHAIN "linux-x86_64-20190731.0")
     set(TOOLCHAIN_URL "https://github.com/jmattsson/esp-toolchains/releases/download/${TOOLCHAIN}/toolchain-esp8266-${TOOLCHAIN}.tar.xz")
@@ -39,7 +39,6 @@ FetchContent_Declare(
 
 
 message(STATUS "Downloading toolchain ${TOOLCHAIN_URL}...")
-# Download and extract the toolchain
 FetchContent_MakeAvailable(${TOOLCHAIN_NAME})
 
 # List the contents of the toolchain directory
