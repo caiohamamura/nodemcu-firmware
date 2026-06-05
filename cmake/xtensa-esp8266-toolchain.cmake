@@ -8,7 +8,7 @@ set(CMAKE_SYSTEM_PROCESSOR xtensa)
 set(EXT "")
 set(CMAKE_C_FLAGS_INIT "-g -ffunction-sections -std=gnu11 -fno-jump-tables -fdata-sections -fpack-struct=4 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals")
 if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_HOST_SYSTEM_NAME STREQUAL "MSYS")
-    set(TOOLCHAIN_PATH "${CMAKE_CURRENT_LIST_DIR}/../tools/toolchains/esp8266-xtensa-lx106-elf-gcc8_4_0-esp-2020r3-win32/bin")
+    set(TOOLCHAIN_PATH "${CMAKE_CURRENT_LIST_DIR}/../tools/toolchains/esp8266-xtensa-lx106-elf-win32-1.22.0-88-gde0bdc1-4.8.5/bin")
     set(EXT ".exe")
     add_compile_definitions(
         stricmp=strcasecmp
