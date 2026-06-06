@@ -309,6 +309,17 @@ extern void mbedtls_free_wrap(void *p);
 // the buffer size is hardcoded here and value is taken from SSL_BUFFER_SIZE (user_config.h)
 #define MBEDTLS_SSL_MAX_CONTENT_LEN             SSL_BUFFER_SIZE /**< Maxium fragment length in bytes, determines the size of each of the two internal I/O buffers */
 
+// Asymmetric buffers: large IN to fit big server cert records, small OUT since
+// the client only sends small handshake messages. The defaults in ssl.h use
+// MAX_CONTENT_LEN for both which costs 32 KB of heap on the 16 KB setting and
+// OOMs during the handshake. See PR #3685 follow-up discussion.
+#ifndef MBEDTLS_SSL_IN_CONTENT_LEN
+#define MBEDTLS_SSL_IN_CONTENT_LEN              SSL_BUFFER_SIZE
+#endif
+#ifndef MBEDTLS_SSL_OUT_CONTENT_LEN
+#define MBEDTLS_SSL_OUT_CONTENT_LEN             4096
+#endif
+
 //#define MBEDTLS_SSL_DEFAULT_TICKET_LIFETIME     86400 /**< Lifetime of session tickets (if enabled) */
 //#define MBEDTLS_PSK_MAX_LEN               32 /**< Max size of TLS pre-shared keys, in bytes (default 256 bits) */
 //#define MBEDTLS_SSL_COOKIE_TIMEOUT        60 /**< Default expiration delay of DTLS cookies, in seconds if HAVE_TIME, or in number of cookies issued */
