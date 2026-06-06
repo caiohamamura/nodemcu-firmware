@@ -273,7 +273,7 @@
 #undef MBEDTLS_XTEA_C
 
 #define MBEDTLS_MPI_WINDOW_SIZE            1 /**< Maximum windows size used. */
-#define MBEDTLS_MPI_MAX_SIZE             512 /**< Maximum number of bytes for usable MPIs. */
+#define MBEDTLS_MPI_MAX_SIZE             1024 /**< Maximum number of bytes for usable MPIs. */
 
 //#define MBEDTLS_CTR_DRBG_ENTROPY_LEN               48 /**< Amount of entropy used per seed by default (48 with SHA-512, 32 with SHA-256) */
 #define MBEDTLS_CTR_DRBG_RESEED_INTERVAL         1000 /**< Interval before reseed is performed by default */
@@ -340,6 +340,9 @@ extern void mbedtls_free_wrap(void *p);
 #ifndef MBEDTLS_SSL_OUT_CONTENT_LEN
 #define MBEDTLS_SSL_OUT_CONTENT_LEN             4096
 #endif
+
+#undef MBEDTLS_SSL_KEEP_PEER_CERTIFICATE
+#undef MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH
 
 //#define MBEDTLS_SSL_DEFAULT_TICKET_LIFETIME     86400 /**< Lifetime of session tickets (if enabled) */
 //#define MBEDTLS_PSK_MAX_LEN               32 /**< Max size of TLS pre-shared keys, in bytes (default 256 bits) */

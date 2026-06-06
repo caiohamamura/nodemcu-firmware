@@ -39,6 +39,8 @@ endif
 # Required for each makefile to inherit from the parent
 #
 
+EXTRA_CCFLAGS += -std=gnu99
+
 PDIR := ../$(PDIR)
 sinclude $(PDIR)Makefile
 
