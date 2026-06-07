@@ -1,5 +1,20 @@
 cmake_minimum_required(VERSION 3.24)
-project(nodemcu_firmware C)
+project(nodemcu_firmware NONE)
+
+set(BUILD_HOST_TOOLS "AUTO" CACHE STRING "Build optional host tools: AUTO, ON, or OFF")
+set_property(CACHE BUILD_HOST_TOOLS PROPERTY STRINGS AUTO ON OFF)
+
+set(HAS_HOST_C_COMPILER OFF)
+if(NOT BUILD_HOST_TOOLS STREQUAL "OFF")
+    include(CheckLanguage)
+    check_language(C)
+    if(CMAKE_C_COMPILER)
+        enable_language(C)
+        set(HAS_HOST_C_COMPILER ON)
+    elseif(BUILD_HOST_TOOLS STREQUAL "ON")
+        message(FATAL_ERROR "BUILD_HOST_TOOLS=ON requires a host C compiler")
+    endif()
+endif()
 
 # Parse flags LUA LUA_NUMBER_*
 include(${CMAKE_SOURCE_DIR}/cmake/parse_flags.cmake)
@@ -14,15 +29,19 @@ if(CORE_COUNT GREATER 1)
     set(PARALLEL_FLAG "-j${CORE_COUNT}")
 endif()
 
-#####################
-# luac_cross
-#####################
-add_subdirectory(tools/luac_cross)
+if(HAS_HOST_C_COMPILER)
+    #####################
+    # luac_cross
+    #####################
+    add_subdirectory(tools/luac_cross)
 
-#######################
-# spiffsimg
-#######################
-add_subdirectory(tools/spiffsimg)
+    #######################
+    # spiffsimg
+    #######################
+    add_subdirectory(tools/spiffsimg)
+else()
+    message(STATUS "Skipping optional host tools: luac.cross and spiffsimg")
+endif()
 
 ######################
 # Configure firmware building
@@ -50,6 +69,7 @@ ExternalProject_Add(firmware
     SOURCE_DIR      ${CMAKE_SOURCE_DIR}/app
     BINARY_DIR      ${CURRENT_BINARY_DIR}
     CMAKE_GENERATOR ${CMAKE_GENERATOR}
+    BUILD_BYPRODUCTS ${CURRENT_BINARY_DIR}/app.elf
     CMAKE_ARGS
         -DCMAKE_PROGRAM_PATH=${CMAKE_PROGRAM_PATH}
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
