@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ release, cmake ]
+    branches: [ release, cmake, cmake-clean ]
   pull_request:
     branches: [ dev, release ]
 
