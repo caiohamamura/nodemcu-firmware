@@ -326,7 +326,7 @@ static err_t send_packet(struct pbuf *p, struct ip_addr *dst_addr, u16_t dst_por
       }
       memcpy(addr_ptr, &sta_netif->ip_addr, sizeof(sta_netif->ip_addr));
     }
-  }	
+  }
 
   if (dst_addr) {
     err = udp_sendto(mdns_pcb, p, dst_addr, dst_port);

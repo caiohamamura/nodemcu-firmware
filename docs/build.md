@@ -23,6 +23,43 @@ V=1 make
 
     Building the tool chain from scratch is out of NodeMCU's scope. Refer to [ESP toolchains](https://github.com/jmattsson/esp-toolchains) for related information.
 
+### CMake Build (Linux and Windows)
+As an alternative to the `make` build above, the firmware can also be built with [CMake](https://cmake.org/) (3.24 or newer). The CMake build downloads and prunes the required toolchain, SDK and `esptool.py` automatically, and additionally supports building on Windows with the MSVC compiler (`cl`).
+
+Configure and build from the repository root:
+```
+cmake -B build -DLUA=53 .
+cmake --build build
+```
+
+The resulting firmware image is written to the `bin/` directory, the same as the `make` build.
+
+The most relevant CMake cache options are:
+
+| Option | Values | Description |
+|---|---|---|
+| `LUA` | `51` (default), `53` | Lua version to build. |
+| `LUA_NUMBER_INTEGRAL` | `ON`/`OFF` | Integer numbers, Lua 5.1 only. Mutually exclusive with `LUA_NUMBER_64BITS`. |
+| `LUA_NUMBER_64BITS` | `ON`/`OFF` | 64-bit numbers, Lua 5.3 only. |
+| `CMAKE_BUILD_TYPE` | `Release` (default), `Debug` | Build configuration. |
+| `BUILD_HOST_TOOLS` | `AUTO` (default), `ON`, `OFF` | Build the host tools (`luac.cross`, `spiffsimg`); requires a host C compiler. |
+
+For example, a Lua 5.3 integer (64-bit) build:
+```
+cmake -B build -DLUA=53 -DLUA_NUMBER_64BITS=ON .
+cmake --build build
+```
+
+Or a Lua 5.1 integer build:
+```
+cmake -B build -DLUA=51 -DLUA_NUMBER_INTEGRAL=ON .
+cmake --build build
+```
+
+Pass `--verbose` to `cmake --build` (or configure with `-DCMAKE_VERBOSE_MAKEFILE=ON`) to increase output verbosity.
+
+The set of compiled modules is taken from `app/include/user_modules.h`, exactly as with the `make` build (see [Select Modules](#select-modules) below).
+
 ### Git
 If you decide to build with either the Docker image or the native environment then use Git to clone the firmware sources instead of downloading the ZIP file from GitHub. Only cloning with Git will retrieve the referenced submodules:
 ```
