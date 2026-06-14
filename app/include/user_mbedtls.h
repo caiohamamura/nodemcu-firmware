@@ -324,25 +324,49 @@ extern void mbedtls_free_wrap(void *p);
 //#define MBEDTLS_SSL_CACHE_DEFAULT_TIMEOUT       86400 /**< 1 day  */
 //#define MBEDTLS_SSL_CACHE_DEFAULT_MAX_ENTRIES      50 /**< Maximum entries in cache */
 
-// the current mbedtls integration doesn't allow to set the buffer size dynamically:
-//   MBEDTLS_SSL_MAX_FRAGMENT_LENGTH feature and dynamic sizing are mutually exclusive
-//   due to non-constant initializer element in app/mbedtls/library/ssl_tls.c:150
-// the buffer size is hardcoded here and value is taken from SSL_BUFFER_SIZE (user_config.h)
 #define MBEDTLS_SSL_MAX_CONTENT_LEN             SSL_BUFFER_SIZE /**< Maxium fragment length in bytes, determines the size of each of the two internal I/O buffers */
+
+// Trim the TLS handshake heap PEAK by not keeping the peer certificate chain.
+// With KEEP_PEER_CERTIFICATE on (mbedtls default), mbedtls copies the verified
+// peer cert into the session and holds it through the rest of the handshake (key
+// exchange, Finished) -- a ~4 KB spike on top of the 16 KB IN buffer. The HTTP/
+// TLS clients here never read the peer cert after the handshake, so dropping the
+// copy is free, and freeing the cert earlier lowers the handshake peak enough that
+// the full 16 KB-IN handshake fits even in the heap-tight on-device e2e harness
+// (~36 KB free). Measured on-device: after-first-byte heap ~13 KB (was ~7-12 KB),
+// e2e 21/21, and CloudFront's ~102 KB body (16 KB records) still works. Cert
+// VERIFICATION is unaffected -- only post-verify RETENTION is dropped.
+// (Grow-on-demand IN sizing was tried first and abandoned: a mid-session realloc
+// to a contiguous 16 KB fails -- E:M 16736 -- because the handshake fragments the
+// heap. Allocating the full 16 KB up front at boot is reliable; trimming the
+// working set is what makes it fit.)
+#undef MBEDTLS_SSL_KEEP_PEER_CERTIFICATE
 
 // Asymmetric buffers: large IN to fit big server cert records, small OUT since
 // the client only sends small handshake messages. The defaults in ssl.h use
 // MAX_CONTENT_LEN for both which costs 32 KB of heap on the 16 KB setting and
 // OOMs during the handshake. See PR #3685 follow-up discussion.
 #ifndef MBEDTLS_SSL_IN_CONTENT_LEN
+/* Full 16 KB: the IN buffer must hold the largest inbound TLS *record*, and a
+ * server may send application-data records up to the 16 KB protocol max (e.g. a
+ * CDN streaming a large body, like a CloudFront ~102 KB response). Allocated at
+ * full size up front -- reliable at boot when heap is contiguous. This used to
+ * OOM the handshake in tight heap, but with KEEP_PEER_CERTIFICATE disabled above
+ * the handshake peak now fits (verified on-device: e2e 21/21 AND CloudFront
+ * 102 KB body, no server-compat regression). */
 #define MBEDTLS_SSL_IN_CONTENT_LEN              SSL_BUFFER_SIZE
 #endif
 #ifndef MBEDTLS_SSL_OUT_CONTENT_LEN
 /* The client only ever sends small records (ClientHello+SNI, key exchange,
- * Finished, the HTTP request line+headers), all well under 2 KB. A 2 KB out
- * buffer instead of 4 KB frees 2 KB of heap across the whole TLS session,
- * including the tight certificate-parsing peak of the handshake. */
-#define MBEDTLS_SSL_OUT_CONTENT_LEN             2048
+ * Finished, the HTTP request line+headers), all well under 1 KB; anything
+ * larger (e.g. a big POST body) is simply split across more records. A 1 KB
+ * out buffer instead of the 4 KB default frees 3 KB of heap across the whole
+ * TLS session, including the tight certificate-parsing peak of the handshake.
+ * On a connected station (~37 KB free) that margin is what lets the httpbin.org
+ * handshake finish instead of OOMing with E:M ~550 at the trough. Reducing OUT
+ * does not affect inbound capacity, so large-cert servers (handled by the 16 KB
+ * IN buffer) are unaffected. */
+#define MBEDTLS_SSL_OUT_CONTENT_LEN             1024
 #endif
 
 //#define MBEDTLS_SSL_DEFAULT_TICKET_LIFETIME     86400 /**< Lifetime of session tickets (if enabled) */
