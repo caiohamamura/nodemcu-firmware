@@ -84,6 +84,16 @@ if { ! ${cmdopts(noxfer)} } {
   foreach arg ${xfers} {
     ::expectnmcu::xfer::sendfile ${victim} ${arg} [file tail ${arg}]
   }
+
+  # The base64 file-transfer pulls in the encoder/crypto/file modules and
+  # leaves ~7 KB of heap consumed (and fragmented) for the rest of the session.
+  # The transferred files live in SPIFFS and survive a reboot, so reboot now to
+  # reclaim that heap: the test script then runs with a clean ~40 KB free, which
+  # the on-device TLS handshake needs to avoid OOM (E:M ...). The device
+  # re-associates WiFi from its saved credentials on boot.
+  sui "Rebooting to reclaim file-transfer heap before running"
+  ::expectnmcu::core::reboot ${cmdopts(serial)}
+  ::expectnmcu::core::waitboot ${victim}
 }
 
 set tfn [file tail [lindex ${::argv} end ] ]

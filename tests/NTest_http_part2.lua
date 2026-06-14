@@ -1,4 +1,9 @@
-local N = (require "NTest")("http")
+-- Obtain the NTest factory via the driver-provided global `ntshim` when present
+-- (tap-driver.expect defines it; it wires up the "TAP: " output handler the
+-- runner parses). part1 reaches us through dofile(), not the loadfile(...)(ntshim)
+-- vararg, so we read ntshim from _G rather than as an argument. Fall back to a
+-- plain NTest instance when run standalone (no driver).
+local N = (rawget(_G, "ntshim") or function(name) return (require "NTest")(name) end)("http")
 
 local cfg_ssid   = rawget(_G, "TEST_WIFI_SSID")
 local cfg_passwd = rawget(_G, "TEST_WIFI_PASSWD")
@@ -151,8 +156,6 @@ if have_http then
   end)
 end
 
--- Kick off tests manually since we are running async
--- tap-driver expects ntshim to be returned from loadfile
-if rawget(_G, "ntshim") then
-  ntshim(N)
-end
+-- NTest runs each test synchronously as it is registered above (coroutine
+-- tests via testco drain their own callback queue), and emits the terminal
+-- "TAP: POST 1..N" plan through the output handler. Nothing else to kick off.
