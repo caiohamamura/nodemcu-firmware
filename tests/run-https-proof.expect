@@ -1,0 +1,70 @@
+#!/usr/bin/env expect
+#
+# Drives tests/e2e_https_proof.lua on a physical NodeMCU over serial and reports
+# whether the HTTPS fetches succeeded.
+#
+# Unlike tap-driver.expect, this transfers the script to SPIFFS and runs it with
+# dofile() AFTER a reboot, so the test chunk's top-level code is freed and the
+# TLS handshake gets the full ~40 KB of heap a clean boot provides (the NTest
+# serial-transfer harness leaves only ~36.5 KB, ~1 KB short of a 16 KB-IN
+# handshake -- hence this lighter path).
+#
+#   TCLLIBPATH=./expectnmcu ./run-https-proof.expect -serial /dev/ttyUSB0 \
+#       e2e_https_proof.lua [e2e_wifi.lua]
+#
+# The last argument is the script run with dofile(); any earlier arguments are
+# additional files transferred first (e.g. injected WiFi credentials).
+
+package require expectnmcu::core
+package require expectnmcu::xfer
+package require cmdline
+
+set cmd_parameters {
+  { serial.arg "/dev/ttyUSB0" "Serial interface" }
+}
+array set cmdopts [cmdline::getoptions ::argv $cmd_parameters "- HTTPS proof runner"]
+
+set xfers ${::argv}
+foreach arg ${xfers} {
+  if { ! [file exists ${arg}] } { send_user "File ${arg} does not exist\n"; exit 1 }
+}
+set runfile [file tail [lindex ${xfers} end]]
+
+proc sus { what } { send_user "\n===> ${what} <===\n" }
+
+set victim [::expectnmcu::core::connect ${cmdopts(serial)}]
+sus "Machine has booted"
+
+foreach arg ${xfers} {
+  ::expectnmcu::xfer::sendfile ${victim} ${arg} [file tail ${arg}]
+}
+
+# Reboot to reclaim the heap the base64 transfer consumed; the files persist in
+# SPIFFS and the station re-associates from saved credentials on boot.
+sus "Rebooting to reclaim transfer heap"
+::expectnmcu::core::reboot ${cmdopts(serial)}
+::expectnmcu::core::waitboot ${victim}
+
+sus "Running ${runfile}"
+send -i ${victim} "dofile(\"${runfile}\")\n"
+expect -i ${victim} -re "dofile\\(\"${runfile}\"\\)\[\r\n\]+" { }
+
+# Drain results. Allow generous time: the 102 KB CloudFront stream plus several
+# TLS handshakes can take a couple of minutes; each line resets the timer.
+set timeout 200
+set failures -1
+expect {
+  -i ${victim} -re "PROOF: ALL OK" { set failures 0 }
+  -i ${victim} -re "PROOF: (\\d+) FAILURES" { set failures $expect_out(1,string) }
+  -i ${victim} -re ${::expectnmcu::core::panicre} { sus "Panic!"; exit 2 }
+  -i ${victim} -re "(?p).\[^\n\]*(?=\n)" { exp_continue }
+  timeout { send_user "Failure: timed out waiting for proof result\n"; exit 2 }
+}
+
+if { ${failures} == 0 } {
+  sus "HTTPS PROOF: ALL OK"
+  exit 0
+} else {
+  sus "HTTPS PROOF: ${failures} FAILURES"
+  exit 1
+}
