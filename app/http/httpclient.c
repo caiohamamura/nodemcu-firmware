@@ -41,6 +41,10 @@ typedef struct request_args_t {
 	int		timeout;
 	os_timer_t	timeout_timer;
 	http_callback_t callback_handle;
+	bool		stream_body;	/* true = stream body chunks; false = accumulate (old behavior) */
+	bool		stream_started;	/* true once we've switched to streaming the body */
+	int		stream_status;	/* HTTP status captured when streaming began */
+	bool		got_first_byte;	/* true after the first received body/header byte */
 } request_args_t;
 
 static char * ICACHE_FLASH_ATTR esp_strdup( const char * str )
@@ -126,39 +130,123 @@ static int ICACHE_FLASH_ATTR http_chunked_decode( const char * chunked, char * d
 }
 
 
+/* Decide, from the headers accumulated in req->buffer, whether this response can
+ * be streamed body-chunk-by-body-chunk into the callback. Redirects are excluded
+ * because they need the whole header block re-read in the disconnect handler. */
+static bool ICACHE_FLASH_ATTR http_can_stream( request_args_t * req )
+{
+	if ( req->callback_handle == NULL )
+		return false;
+	if ( os_strncmp( req->buffer, "HTTP/1.0 ", 9 ) != 0 &&
+	     os_strncmp( req->buffer, "HTTP/1.1 ", 9 ) != 0 )
+		return false;
+	int status = atoi( req->buffer + 9 );
+	if ( status >= 300 && status <= 308 && strcasestr( req->buffer, "Location:" ) != NULL )
+		return false;
+	return true;
+}
+
 static void ICACHE_FLASH_ATTR http_receive_callback( void * arg, char * buf, unsigned short len )
 {
 	struct espconn	* conn	= (struct espconn *) arg;
 	request_args_t	* req	= (request_args_t *) conn->reverse;
+
+	/* Measurement point 3: free heap right after the first received byte. */
+	if ( !req->got_first_byte )
+	{
+		req->got_first_byte = true;
+		HTTPCLIENT_HEAP( "after-first-byte" );
+	}
+
+	/* Once we're streaming, body bytes go straight to the callback and are never
+	 * accumulated, keeping RAM use flat regardless of the total body size. The
+	 * peak Lua allocation is therefore one TCP segment (~TCP_MSS), not the whole
+	 * body -- this is what lets large responses through on a TLS-constrained heap. */
+	if ( req->stream_started )
+	{
+		if ( req->callback_handle != NULL && len > 0 )
+			req->callback_handle( buf, req->stream_status, NULL, len, false );
+		return;
+	}
 
 	if ( req->buffer == NULL )
 	{
 		return;
 	}
 
-	/* Let's do the equivalent of a realloc(). */
-	const int	new_size = req->buffer_size + len;
-	char		* new_buffer;
-	if ( new_size > BUFFER_SIZE_MAX || NULL == (new_buffer = (char *) os_malloc( new_size ) ) )
+	/* Accumulate ONLY until the end of the headers ("\r\n\r\n"); the body is never
+	 * buffered. No allocation happens on the receive path. */
+	const int	cur = req->buffer_size - 1;             /* content length, excl. null */
+	const int	cap = BUFFER_SIZE_MAX - 1;              /* usable capacity, excl. null */
+	const int	fit = ( (int) len <= cap - cur ) ? (int) len : cap - cur;
+
+	if ( fit > 0 )
 	{
-		HTTPCLIENT_ERR( "Response too long (%d)", new_size );
-		req->buffer[0] = '\0';                                                                  /* Discard the buffer to avoid using an incomplete response. */
-#ifdef CLIENT_SSL_ENABLE
-		if ( req->secure )
-			espconn_secure_disconnect( conn );
-		else
-#endif
-			espconn_disconnect( conn );
-		return;                                                                                 /* The disconnect callback will be called. */
+		os_memcpy( req->buffer + cur, buf, fit );
+		req->buffer_size		= cur + fit + 1;
+		req->buffer[req->buffer_size - 1] = '\0';
 	}
 
-	os_memcpy( new_buffer, req->buffer, req->buffer_size );
-	os_memcpy( new_buffer + req->buffer_size - 1 /*overwrite the null character*/, buf, len );      /* Append new data. */
-	new_buffer[new_size - 1] = '\0';                                                                /* Make sure there is an end of string. */
+	char *hdr_end = (char *) os_strstr( req->buffer, "\r\n\r\n" );
+	if ( hdr_end == NULL )
+	{
+		/* Headers not complete yet. If the buffer is already full without an end
+		 * of headers, the header block is pathologically large: give up cleanly. */
+		if ( req->buffer_size - 1 >= cap )
+		{
+			HTTPCLIENT_ERR( "Response headers too long (%d)", req->buffer_size );
+			req->buffer[0] = '\0';
+#ifdef CLIENT_SSL_ENABLE
+			if ( req->secure )
+				espconn_secure_disconnect( conn );
+			else
+#endif
+				espconn_disconnect( conn );
+		}
+		return;
+	}
 
-	os_free( req->buffer );
-	req->buffer		= new_buffer;
-	req->buffer_size	= new_size;
+	/* Headers are complete. Only stream when explicitly requested and safe to do
+	 * so; otherwise accumulate body in the buffer (old behavior, capped at
+	 * BUFFER_SIZE_MAX). Redirects are never streamed regardless of stream_body
+	 * because they need the full header block in the disconnect handler. */
+	if ( !req->stream_body || !http_can_stream( req ) )
+	{
+		if ( req->buffer_size - 1 >= cap )
+		{
+			HTTPCLIENT_ERR( "Response too long (%d)", req->buffer_size );
+			req->buffer[0] = '\0';
+#ifdef CLIENT_SSL_ENABLE
+			if ( req->secure )
+				espconn_secure_disconnect( conn );
+			else
+#endif
+				espconn_disconnect( conn );
+		}
+		return;
+	}
+
+	/* Switch to streaming: deliver the headers plus whatever body bytes already
+	 * arrived in this record, then forward every subsequent chunk straight on. */
+	req->stream_started = true;
+	req->stream_status  = atoi( req->buffer + 9 );
+
+	char *body	= hdr_end + 4; /* skip the CRLFCRLF */
+	int body_so_far = req->buffer_size - 1 - (int) (body - req->buffer);
+
+	/* First callback: parsed headers (via the buffer) plus the initial body. */
+	req->callback_handle( body, req->stream_status, &req->buffer, body_so_far, false );
+
+	/* The header buffer is done; free it and forward any body bytes from THIS
+	 * record that did not fit into the header buffer. */
+	if ( req->buffer )
+	{
+		os_free( req->buffer );
+		req->buffer = NULL;
+		req->buffer_size = 0;
+	}
+	if ( fit < (int) len )
+		req->callback_handle( buf + fit, req->stream_status, NULL, (int) len - fit, false );
 }
 
 
@@ -194,6 +282,31 @@ static void ICACHE_FLASH_ATTR http_connect_callback( void * arg )
 	request_args_t	* req	= (request_args_t *) conn->reverse;
 	espconn_regist_recvcb( conn, http_receive_callback );
 	espconn_regist_sentcb( conn, http_send_callback );
+
+	/* Measurement point 2: free heap right after the handshake completed (this
+	 * callback only fires once the TLS session is established). */
+	HTTPCLIENT_HEAP( "after-handshake" );
+
+	/* Allocate the fixed response buffer now: for TLS this fires after the
+	 * handshake has freed its certificate-parsing working set, so the heap has
+	 * the most room and the receive path never has to allocate again. */
+	if ( req->buffer == NULL )
+	{
+		req->buffer = (char *) os_malloc( BUFFER_SIZE_MAX );
+		if ( req->buffer == NULL )
+		{
+			HTTPCLIENT_ERR( "Out of memory allocating response buffer" );
+#ifdef CLIENT_SSL_ENABLE
+			if ( req->secure )
+				espconn_secure_disconnect( conn );
+			else
+#endif
+				espconn_disconnect( conn );
+			return;
+		}
+		req->buffer[0]		= '\0';
+		req->buffer_size	= 1;
+	}
 
 	char post_headers[32] = "";
 
@@ -292,6 +405,9 @@ static void ICACHE_FLASH_ATTR http_disconnect_callback( void * arg )
 	HTTPCLIENT_DEBUG( "Disconnected" );
 	struct espconn *conn = (struct espconn *) arg;
 
+	/* Measurement point 4: free heap at connection close. */
+	HTTPCLIENT_HEAP( "after-close" );
+
 	if ( conn == NULL )
 	{
 		return;
@@ -310,6 +426,18 @@ static void ICACHE_FLASH_ATTR http_disconnect_callback( void * arg )
 
 		// Turn off timeout timer
 		os_timer_disarm( &(req->timeout_timer) );
+
+		/* If we streamed the body, the callback has already received it in
+		 * chunks; just emit the terminal (done) callback and clean up. */
+		if ( req->stream_started )
+		{
+			if ( req->callback_handle != NULL )
+				req->callback_handle( "", req->stream_status, NULL, 0, true );
+			http_free_req( req );
+			espconn_delete( conn );
+			os_free( conn );
+			return;
+		}
 
 		if ( req->buffer == NULL )
 		{
@@ -435,7 +563,7 @@ static void ICACHE_FLASH_ATTR http_disconnect_callback( void * arg )
 
 		  http_free_req( req );
 
-                  req_callback( body, http_status, &req_buffer, body_size );
+                  req_callback( body, http_status, &req_buffer, body_size, true );
                   if (req_buffer) {
                     os_free(req_buffer);
                   }
@@ -501,7 +629,7 @@ static void ICACHE_FLASH_ATTR http_dns_callback( const char * hostname, ip_addr_
 		HTTPCLIENT_ERR( "DNS failed for %s", hostname );
 		if ( req->callback_handle != NULL )
 		{
-			req->callback_handle( "", -1, NULL, 0 );
+			req->callback_handle( "", -1, NULL, 0, true );
 		}
 		http_free_req( req );
 	}
@@ -530,6 +658,9 @@ static void ICACHE_FLASH_ATTR http_dns_callback( const char * hostname, ip_addr_
 		  //http_timeout_callback frees memory used by this function and timer cannot be dropped
 		os_timer_arm( &(req->timeout_timer), req->timeout, false );
 
+		/* Measurement point 1: free heap before the TLS handshake starts. */
+		HTTPCLIENT_HEAP( "before-handshake" );
+
 #ifdef CLIENT_SSL_ENABLE
 		if ( req->secure )
 		{
@@ -545,7 +676,7 @@ static void ICACHE_FLASH_ATTR http_dns_callback( const char * hostname, ip_addr_
 }
 
 
-void ICACHE_FLASH_ATTR http_raw_request( const char * hostname, int port, bool secure, const char * method, const char * path, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count )
+static void ICACHE_FLASH_ATTR http_do_raw_request( const char * hostname, int port, bool secure, const char * method, const char * path, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count, bool stream_body )
 {
 	HTTPCLIENT_DEBUG( "DNS request" );
 
@@ -560,9 +691,13 @@ void ICACHE_FLASH_ATTR http_raw_request( const char * hostname, int port, bool s
 	req->headers		= esp_strdup( headers );
 	req->post_data		= esp_strdup( post_data );
 	req->buffer_size	= 1;
-	req->buffer		= (char *) os_malloc( 1 );
-	req->buffer[0]		= '\0';                                         /* Empty string. */
+	/* The response buffer is allocated later, in http_connect_callback, once the
+	 * TLS handshake has completed and freed its (large) certificate-parsing
+	 * working set. Allocating it here would hold the memory across the
+	 * handshake and starve it on large-certificate sites. */
+	req->buffer		= NULL;
 	req->callback_handle	= callback_handle;
+	req->stream_body	= stream_body;
 	req->timeout		= HTTP_REQUEST_TIMEOUT_MS;
 	req->redirect_follow_count = redirect_follow_count;
 
@@ -590,13 +725,18 @@ void ICACHE_FLASH_ATTR http_raw_request( const char * hostname, int port, bool s
 	}
 }
 
+void ICACHE_FLASH_ATTR http_raw_request( const char * hostname, int port, bool secure, const char * method, const char * path, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count )
+{
+	http_do_raw_request( hostname, port, secure, method, path, headers, post_data, callback_handle, redirect_follow_count, false );
+}
 
-/*
- * Parse an URL of the form http://host:port/path
- * <host> can be a hostname or an IP address
- * <port> is optional
- */
-void ICACHE_FLASH_ATTR http_request( const char * url, const char * method, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count )
+void ICACHE_FLASH_ATTR http_raw_request_stream( const char * hostname, int port, bool secure, const char * method, const char * path, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count )
+{
+	http_do_raw_request( hostname, port, secure, method, path, headers, post_data, callback_handle, redirect_follow_count, true );
+}
+
+
+static void ICACHE_FLASH_ATTR http_do_request( const char * url, const char * method, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count, bool stream_body )
 {
 	/*
 	 * FIXME: handle HTTP auth with http://user:pass@host/
@@ -669,15 +809,22 @@ void ICACHE_FLASH_ATTR http_request( const char * url, const char * method, cons
 	HTTPCLIENT_DEBUG( "port=%d", port );
 	HTTPCLIENT_DEBUG( "method=%s", method );
 	HTTPCLIENT_DEBUG( "path=%s", path );
-	http_raw_request( hostname, port, secure, method, path, headers, post_data, callback_handle, redirect_follow_count);
+	http_do_raw_request( hostname, port, secure, method, path, headers, post_data, callback_handle, redirect_follow_count, stream_body );
 }
 
 
-/*
- * Parse an URL of the form http://host:port/path
- * <host> can be a hostname or an IP address
- * <port> is optional
- */
+void ICACHE_FLASH_ATTR http_request( const char * url, const char * method, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count )
+{
+	http_do_request( url, method, headers, post_data, callback_handle, redirect_follow_count, false );
+}
+
+
+void ICACHE_FLASH_ATTR http_request_stream( const char * url, const char * method, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count )
+{
+	http_do_request( url, method, headers, post_data, callback_handle, redirect_follow_count, true );
+}
+
+
 void ICACHE_FLASH_ATTR http_post( const char * url, const char * headers, const char * post_data, http_callback_t callback_handle )
 {
 	http_request( url, "POST", headers, post_data, callback_handle, 0 );
@@ -699,6 +846,24 @@ void ICACHE_FLASH_ATTR http_delete( const char * url, const char * headers, cons
 void ICACHE_FLASH_ATTR http_put( const char * url, const char * headers, const char * post_data, http_callback_t callback_handle )
 {
 	http_request( url, "PUT", headers, post_data, callback_handle, 0 );
+}
+
+
+void ICACHE_FLASH_ATTR http_get_stream( const char * url, const char * headers, http_callback_t callback_handle )
+{
+	http_request_stream( url, "GET", headers, NULL, callback_handle, 0 );
+}
+
+
+void ICACHE_FLASH_ATTR http_post_stream( const char * url, const char * headers, const char * post_data, http_callback_t callback_handle )
+{
+	http_request_stream( url, "POST", headers, post_data, callback_handle, 0 );
+}
+
+
+void ICACHE_FLASH_ATTR http_put_stream( const char * url, const char * headers, const char * post_data, http_callback_t callback_handle )
+{
+	http_request_stream( url, "PUT", headers, post_data, callback_handle, 0 );
 }
 
 

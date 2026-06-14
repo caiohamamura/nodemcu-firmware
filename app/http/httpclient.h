@@ -25,6 +25,16 @@ static const char log_prefix[] = "HTTP client: ";
 #else
   #define HTTPCLIENT_ERR(...)
 #endif
+/*
+ * Define HTTPCLIENT_HEAP_TRACE to print free heap at four points of a request
+ * (before/after handshake, after first received byte, after close). Useful for
+ * sizing the TLS buffers on RAM-constrained targets; off by default.
+ */
+#if defined(HTTPCLIENT_HEAP_TRACE)
+  #define HTTPCLIENT_HEAP(label) NODE_ERR("HTTPHEAP " label "=%d\n", system_get_free_heap_size())
+#else
+  #define HTTPCLIENT_HEAP(label)
+#endif
 
 #if defined(USES_SDK_BEFORE_V140)
   #define espconn_send espconn_sent
@@ -39,7 +49,11 @@ static const char log_prefix[] = "HTTP client: ";
 /*
  * Size of http responses that will cause an error.
  */
-#define BUFFER_SIZE_MAX            (0x2000)
+/* With body streaming this buffer only holds the response headers until the
+ * "\r\n\r\n" terminator, so a small value keeps the post-handshake allocation
+ * (made while the heap is at its tightest) cheap. Header blocks larger than this
+ * are rejected with a clean error. */
+#define BUFFER_SIZE_MAX            (0x0800)
 
 /*
  * Timeout of http request.
@@ -53,48 +67,43 @@ static const char log_prefix[] = "HTTP client: ";
  * A successful request corresponds to an HTTP status code of 200 (OK).
  * More info at http://en.wikipedia.org/wiki/List_of_HTTP_status_codes
  */
-typedef void (* http_callback_t)(char * response_body, int http_status, char ** full_response_p, int body_size);
+/*
+ * The callback is normally invoked once, with the complete response body and
+ * `done` set to true.
+ *
+ * For responses larger than BUFFER_SIZE_MAX the client switches to streaming
+ * mode rather than failing with "Response too long": the callback is then
+ * invoked multiple times. The first invocation carries the parsed headers (via
+ * full_response_p) plus the initial body bytes; subsequent invocations carry
+ * further body chunks with full_response_p == NULL; the final invocation has an
+ * empty body and `done` set to true. This bounds peak RAM to roughly
+ * BUFFER_SIZE_MAX plus one TCP segment instead of the whole body.
+ */
+typedef void (* http_callback_t)(char * response_body, int http_status, char ** full_response_p, int body_size, bool done);
 
 /*
  * Call this function to skip URL parsing if the arguments are already in separate variables.
+ * http_raw_request      — accumulate full response (old behaviour, errors on > BUFFER_SIZE_MAX)
+ * http_raw_request_stream — stream body chunks; callback receives multiple calls until done=true
  */
 void ICACHE_FLASH_ATTR http_raw_request(const char * hostname, int port, bool secure, const char * method, const char * path, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count);
+void ICACHE_FLASH_ATTR http_raw_request_stream(const char * hostname, int port, bool secure, const char * method, const char * path, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count);
 
 /*
  * Request data from URL use custom method.
- * The data should be encoded as any format.
- * Try:
- * http_request("http://httpbin.org/post", "OPTIONS", "Content-type: text/plain", "Hello world", http_callback_example, 0);
  */
 void ICACHE_FLASH_ATTR http_request(const char * url, const char * method, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count);
+void ICACHE_FLASH_ATTR http_request_stream(const char * url, const char * method, const char * headers, const char * post_data, http_callback_t callback_handle, int redirect_follow_count);
 
-/*
- * Post data to a web form.
- * The data should be encoded as any format.
- * Try:
- * http_post("http://httpbin.org/post", "Content-type: application/json", "{\"hello\": \"world\"}", http_callback_example);
- */
 void ICACHE_FLASH_ATTR http_post(const char * url, const char * headers, const char * post_data, http_callback_t callback_handle);
-
-/*
- * Download a web page from its URL.
- * Try:
- * http_get("http://wtfismyip.com/text", NULL, http_callback_example);
- */
 void ICACHE_FLASH_ATTR http_get(const char * url, const char * headers, http_callback_t callback_handle);
-/*
- * Delete a web page from its URL.
- * Try:
- * http_delete("http://wtfismyip.com/text", NULL, http_callback_example);
- */
 void ICACHE_FLASH_ATTR http_delete(const char * url, const char * headers, const char * post_data, http_callback_t callback_handle);
-/*
- * Update data to a web form.
- * The data should be encoded as any format.
- * Try:
- * http_put("http://httpbin.org/post", "Content-type: application/json", "{\"hello\": \"world\"}", http_callback_example);
- */
 void ICACHE_FLASH_ATTR http_put(const char * url, const char * headers, const char * post_data, http_callback_t callback_handle);
+
+/* Streaming variants — callback receives cb(chunk, status, headers_or_nil, body_size, done) multiple times. */
+void ICACHE_FLASH_ATTR http_get_stream(const char * url, const char * headers, http_callback_t callback_handle);
+void ICACHE_FLASH_ATTR http_post_stream(const char * url, const char * headers, const char * post_data, http_callback_t callback_handle);
+void ICACHE_FLASH_ATTR http_put_stream(const char * url, const char * headers, const char * post_data, http_callback_t callback_handle);
 
 /*
  * Output on the UART.
