@@ -42,6 +42,9 @@ jobs:
       shell: bash
     - name: Build firmware
       run: |
+        sed -i 's/\/\/#define LUA_USE_MODULES_TLS/#define LUA_USE_MODULES_TLS/' app/include/user_modules.h
+        sed -i 's/\/\/#define LUA_USE_MODULES_HTTP/#define LUA_USE_MODULES_HTTP/' app/include/user_modules.h
+        sed -i 's/\/\/#define CLIENT_SSL_ENABLE/#define CLIENT_SSL_ENABLE/' app/include/user_config.h
         EXTRA_CCFLAGS=""
         if [ "${{ matrix.numbers }}" == "integral" ]; then
           EXTRA_CCFLAGS="-DLUA_NUMBER_INTEGRAL=ON"
