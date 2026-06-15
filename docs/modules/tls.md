@@ -67,6 +67,13 @@ most common features supported.  Specifically, it provides:
 
 !!! tip
 
+	To enable the TLS module and its HTTPS capabilities, ensure the following
+	definitions are uncommented in your build headers:
+	- `LUA_USE_MODULES_TLS` and `LUA_USE_MODULES_HTTP` in `app/include/user_modules.h`
+	- `CLIENT_SSL_ENABLE` and a sufficient `SSL_BUFFER_SIZE` (e.g., `16384`) in `app/include/user_config.h`
+
+!!! tip
+
 	The complete configuration is stored in
 	[user_mbedtls.h](../../app/include/user_mbedtls.h). This is the file to
 	edit if you build your own firmware and want to change mbed TLS
