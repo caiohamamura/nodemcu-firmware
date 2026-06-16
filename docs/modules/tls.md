@@ -72,6 +72,40 @@ most common features supported.  Specifically, it provides:
 	- `LUA_USE_MODULES_TLS` and `LUA_USE_MODULES_HTTP` in `app/include/user_modules.h`
 	- `CLIENT_SSL_ENABLE` and a sufficient `SSL_BUFFER_SIZE` (e.g., `16384`) in `app/include/user_config.h`
 
+!!! tip "Choosing `SSL_BUFFER_SIZE` and real heap cost"
+
+	`SSL_BUFFER_SIZE` sizes the mbedTLS in/out record buffers. It must be at
+	least as large as **both** of:
+
+	1. the server's **certificate-chain handshake message** -- mbedTLS reassembles
+	   that whole message in the buffer, so a chain larger than `SSL_BUFFER_SIZE`
+	   makes the handshake fail (no amount of record fragmentation helps); and
+	2. the **largest TLS record** the server sends as application data.
+
+	Pick the smallest value that covers your endpoints; a larger buffer costs heap
+	for the entire connection. Measured on real hardware (ESP8266, float build,
+	free heap at the *tightest* point of a single `http.get_stream` request, with
+	`MBEDTLS_SSL_KEEP_PEER_CERTIFICATE` disabled in `user_mbedtls.h`):
+
+	| `SSL_BUFFER_SIZE` | works with | free heap at trough |
+	|---|---|---|
+	| `4096` (default) | small certs + records (e.g. httpbin.org, raw.githubusercontent.com) | ~22 KB |
+	| `8192` | also a ~5 KB cert chain (e.g. Google's 4868-byte chain) | ~18 KB |
+	| `16384` | also the 16 KB protocol-max records CDNs send for large bodies (e.g. a CloudFront ~102 KB response) | ~10 KB |
+
+	Each step roughly adds the buffer-size delta to the per-connection footprint.
+	`SSL_MAX_FRAGMENT_LENGTH_CODE` advertises a max-fragment-length to the server,
+	but it does **not** lift the requirement above: many servers (CloudFront among
+	them) ignore the extension and still send 16 KB records, and the certificate
+	message must fit the buffer regardless.
+
+	**Body size is not a factor.** The `http` module streams response bodies via
+	`http.get_stream` (and friends) in `<=`TCP-MSS (~1460 B) chunks straight to
+	your callback, so a multi-hundred-KB body uses no more heap than a small one
+	-- only the per-record size, bounded by `SSL_BUFFER_SIZE`, matters. Use
+	`http.get` (buffered) only for small responses; it accumulates the whole body
+	in RAM and will OOM on large ones irrespective of `SSL_BUFFER_SIZE`.
+
 !!! tip
 
 	The complete configuration is stored in

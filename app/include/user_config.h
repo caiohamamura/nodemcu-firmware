@@ -125,6 +125,29 @@
 // The SHA2 and MD2 libraries are also optionally used by the crypto functions.
 // The SHA1 and MD5 function are implemented in the ROM BIOS. The MD2 and SHA2
 // are by firmware code, and can be enabled if you need this functionality.
+//
+// To enable HTTPS (the tls / http modules over SSL):
+//   1. uncomment CLIENT_SSL_ENABLE below;
+//   2. uncomment LUA_USE_MODULES_TLS (and LUA_USE_MODULES_HTTP for the http
+//      client) in user_modules.h;
+//   3. SSL_BUFFER_SIZE sizes the TLS in/out record buffers. It must be at least
+//      as large as (a) the server's certificate-chain handshake message and
+//      (b) the largest TLS record the server sends. Pick the smallest that fits
+//      your endpoints -- bigger costs heap during the whole session (measured on
+//      real hardware, free heap at the tightest point of one request):
+//        4096  (default): small certs + records. OK for httpbin, GitHub raw.
+//                         ~22 KB free at the trough.
+//        8192           : also fits a ~5 KB cert chain (e.g. Google's 4868 B).
+//                         ~18 KB free.
+//        16384          : also receives the 16 KB protocol-max records that CDNs
+//                         send for large bodies (e.g. a CloudFront ~102 KB
+//                         response). ~10 KB free.
+//      Note SSL_MAX_FRAGMENT_LENGTH_CODE below advertises a max-fragment-length
+//      to the server, but it does NOT remove this requirement: many servers
+//      (e.g. CloudFront) ignore the extension, and the cert *message* must still
+//      fit the buffer even when split across records. 16384 is heap-heavy during
+//      the handshake; user_mbedtls.h disables MBEDTLS_SSL_KEEP_PEER_CERTIFICATE
+//      to keep it within heap. See docs/modules/tls.md and tests/run-e2e-http.sh.
 
 //#define CLIENT_SSL_ENABLE
 #define SHA2_ENABLE

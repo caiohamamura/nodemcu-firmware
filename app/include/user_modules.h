@@ -64,6 +64,9 @@
 //#define LUA_USE_MODULES_SWITEC
 //#define LUA_USE_MODULES_TCS34725
 //#define LUA_USE_MODULES_TM1829
+// TLS / HTTPS: uncomment LUA_USE_MODULES_TLS below (and LUA_USE_MODULES_HTTP
+// above for the http client). Also needs CLIENT_SSL_ENABLE + a suitable
+// SSL_BUFFER_SIZE in user_config.h -- see the HTTPS notes there.
 //#define LUA_USE_MODULES_TLS
 #define LUA_USE_MODULES_TMR
 //#define LUA_USE_MODULES_TSL2561

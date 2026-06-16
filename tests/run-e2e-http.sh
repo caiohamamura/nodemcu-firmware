@@ -16,10 +16,26 @@
 # Optional:
 #   * NODEMCU_LFS          - path to an LFS image to flash before running.
 #
-# The device must already be running a firmware that includes the `http`, `tls`,
-# `net` and `wifi` modules with CLIENT_SSL_ENABLE; otherwise the HTTPS tests
-# report themselves skipped. This script deliberately does NOT reflash the
-# application firmware (that is destructive and board-specific).
+# The device must already be running a firmware built with the right options
+# (the defaults ship TLS off, so a stock build will NOT pass). This script does
+# NOT reflash the application firmware (that is destructive and board-specific).
+# Required firmware config (uncomment in app/include/user_modules.h /
+# app/include/user_config.h before building -- the CI workflow does the first
+# three via sed):
+#   * LUA_USE_MODULES_HTTP, LUA_USE_MODULES_TLS  -- the modules under test
+#   * CLIENT_SSL_ENABLE                          -- HTTPS support
+#   * SSL_BUFFER_SIZE 16384                       -- to receive large TLS records
+#       (e.g. the CloudFront 102 KB body in the proof); 4096 only handles small-
+#       record servers. user_mbedtls.h's KEEP_PEER_CERTIFICATE-off keeps the
+#       16 KB handshake within heap.
+#   * LUA_USE_MODULES_CRYPTO, LUA_USE_MODULES_ENCODER, LUA_USE_MODULES_FILE
+#       -- NOT for TLS itself, but required by the serial file-transfer harness
+#       (tap-driver.expect uses encoder.fromBase64 + crypto.fhash + the file API).
+#       Without ENCODER/CRYPTO the transfer fails with "attempt to index global
+#       'encoder' (a nil value)".
+# Also needs a host luac.cross (LUAC_CROSS or ../build_lc/luac.cross) to
+# precompile the test Lua to bytecode; otherwise on-device source compile OOMs on
+# a TLS build. Build it with: cmake --build build_lc.
 #
 # Usage:
 #   NODEMCU_WIFI_SSID=myssid NODEMCU_WIFI_PASSWD=secret ./tests/run-e2e-http.sh
