@@ -70,18 +70,12 @@ ExternalProject_Add(firmware
     BINARY_DIR      ${CURRENT_BINARY_DIR}
     CMAKE_GENERATOR ${CMAKE_GENERATOR}
     BUILD_BYPRODUCTS ${CURRENT_BINARY_DIR}/app.elf
+    BUILD_ALWAYS TRUE
     CMAKE_ARGS
         -DCMAKE_PROGRAM_PATH=${CMAKE_PROGRAM_PATH}
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_SOURCE_DIR}/cmake/xtensa-esp8266-toolchain.cmake
         -DCMAKE_VERBOSE_MAKEFILE=${CMAKE_VERBOSE_MAKEFILE}
-        # Forward the Lua flavour so the firmware matches the host luac.cross
-        # (built by the outer project). Without this the firmware always uses the
-        # parse_flags.cmake default LUA=51 while luac.cross follows -DLUA, so an
-        # LFS image built for one is rejected by the other.
-        -DLUA=${LUA}
-        -DLUA_NUMBER_INTEGRAL=${LUA_NUMBER_INTEGRAL}
-        -DLUA_NUMBER_64BITS=${LUA_NUMBER_64BITS}
     BUILD_COMMAND   ${CMAKE_COMMAND} --build ${CURRENT_BINARY_DIR} ${BUILD_CONFIG} ${PARALLEL_FLAG} ${VERBOSE_FLAGS}
     INSTALL_COMMAND ${CMAKE_COMMAND} --install ${CURRENT_BINARY_DIR}
 )

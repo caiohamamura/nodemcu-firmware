@@ -112,9 +112,7 @@ list(TRANSFORM UNDEFINED_SYMBOLS PREPEND "SHELL:-u " OUTPUT_VARIABLE UNDEFINED_S
 # Create firmware elf
 set(EXECUTABLE_NAME app.elf)
 
-# Add a dummy.c file to avoid CMake error
-file(TOUCH dummy.c)
-add_executable(${EXECUTABLE_NAME} dummy.c)
+add_executable(${EXECUTABLE_NAME} nodemcu-vscode-newlib.c)
 
 # Allow using -Wl,--start-group end-group in linker command
 set(CMAKE_C_LINK_GROUP_USING_rescan_SUPPORTED TRUE)
@@ -169,9 +167,3 @@ target_link_directories(${EXECUTABLE_NAME} PRIVATE
 )
 
 
-add_custom_command(
-    TARGET ${EXECUTABLE_NAME}
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E remove -f dummy.c
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
