@@ -1,0 +1,87 @@
+name: Publish luac.cross release assets
+
+# Builds the host `luac.cross` LFS compiler for every platform x Lua version the
+# nodemcu-vscode extension knows how to download, and uploads them to a single
+# release. The extension's `ensurePrebuiltLuacCross` fetches these by name so
+# users never need a host C compiler / cmake to build an LFS image.
+#
+# Asset name convention (must match src/firmware/managedFirmware.ts):
+#   luac.cross-linux-x64-lua53
+#   luac.cross-darwin-x64-lua53
+#   luac.cross-darwin-arm64-lua53
+#   luac.cross.exe-win32-x64-lua53
+# ...and the lua51 variants.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to publish assets to"
+        required: true
+        default: "luac-cross-v3.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        lua_ver: ["51", "53"]
+        include:
+          - os: ubuntu-latest
+            platform_key: linux-x64
+            ext: ""
+          - os: macos-13          # Intel runner -> darwin-x64
+            platform_key: darwin-x64
+            ext: ""
+          - os: macos-14          # Apple Silicon runner -> darwin-arm64
+            platform_key: darwin-arm64
+            ext: ""
+          - os: windows-2022
+            platform_key: win32-x64
+            ext: ".exe"
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install ninja (unix)
+        if: runner.os != 'Windows'
+        uses: seanmiddleditch/gha-setup-ninja@v6
+
+      - name: Build luac.cross (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cmake -B build -GNinja -DLUA=${{ matrix.lua_ver }} -DCMAKE_BUILD_TYPE=Release .
+          cmake --build build -j
+          cmake --install build --prefix .
+          ls -l bin
+          # The integral build emits luac.cross.int; the float build emits luac.cross.
+          mv -f bin/luac.cross.int bin/luac.cross 2>/dev/null || true
+          mv bin/luac.cross "luac.cross-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
+
+      - name: Build luac.cross (windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cmake -B build -GNinja -DLUA=${{ matrix.lua_ver }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
+          cmake --build build --config Release --parallel
+          cmake --install build --prefix .
+          dir bin
+          move /y bin\luac.cross.int.exe bin\luac.cross.exe 2>nul
+          move /y bin\luac.cross.exe "luac.cross.exe-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          files: |
+            luac.cross-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}
+            luac.cross.exe-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}
+          fail_on_unmatched_files: false
