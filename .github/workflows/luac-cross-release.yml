@@ -57,13 +57,16 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
+          # Only the host `luac.cross` target is needed — building the full
+          # firmware would pull in the xtensa cross-compile (slow and fragile on
+          # the macOS/Windows runners) for no benefit, and `cmake --install`
+          # depends on targets (spiffsimg) we never build here.
           cmake -B build -GNinja -DLUA=${{ matrix.lua_ver }} -DCMAKE_BUILD_TYPE=Release .
-          cmake --build build -j
-          cmake --install build --prefix .
-          ls -l bin
+          cmake --build build --target luac.cross -j
           # The integral build emits luac.cross.int; the float build emits luac.cross.
-          mv -f bin/luac.cross.int bin/luac.cross 2>/dev/null || true
-          mv bin/luac.cross "luac.cross-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
+          src=$(ls build/tools/luac_cross/luac.cross.int build/tools/luac_cross/luac.cross 2>/dev/null | head -1)
+          test -n "$src" || { echo "luac.cross binary not found"; ls -lR build/tools/luac_cross; exit 1; }
+          mv "$src" "luac.cross-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
 
       - name: Build luac.cross (windows)
         if: runner.os == 'Windows'
@@ -71,11 +74,12 @@ jobs:
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           cmake -B build -GNinja -DLUA=${{ matrix.lua_ver }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
-          cmake --build build --config Release --parallel
-          cmake --install build --prefix .
-          dir bin
-          move /y bin\luac.cross.int.exe bin\luac.cross.exe 2>nul
-          move /y bin\luac.cross.exe "luac.cross.exe-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
+          cmake --build build --target luac.cross --parallel
+          if exist build\tools\luac_cross\luac.cross.int.exe (
+            move /y build\tools\luac_cross\luac.cross.int.exe "luac.cross.exe-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
+          ) else (
+            move /y build\tools\luac_cross\luac.cross.exe "luac.cross.exe-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
+          )
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
