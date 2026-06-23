@@ -13,6 +13,9 @@ name: Publish luac.cross release assets
 # ...and the lua51 variants.
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -84,7 +87,7 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.release_tag }}
+          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
           files: |
             luac.cross-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}
             luac.cross.exe-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}
