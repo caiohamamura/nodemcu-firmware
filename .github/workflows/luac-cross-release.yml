@@ -95,17 +95,46 @@ jobs:
       - name: Verify the binary reports the right Lua version
         shell: bash
         run: |
-          set -e
-          BIN=$(ls "build/tools/luac_cross/${CMAKE_TARGET}" "build/tools/luac_cross/${CMAKE_TARGET}.exe" 2>/dev/null | head -1)
-          test -n "$BIN" || { echo "luac.cross not found"; ls -lR build/tools/luac_cross || true; exit 1; }
+          set +e  # don't abort on individual failures — we want diagnostics
+          # Locate the built binary. Try the cmake target name first (with and
+          # without .exe), then fall back to anything ninja produced.
+          BIN=""
+          for cand in \
+            "build/tools/luac_cross/${CMAKE_TARGET}" \
+            "build/tools/luac_cross/${CMAKE_TARGET}.exe"; do
+            if [ -f "$cand" ]; then BIN="$cand"; break; fi
+          done
+          if [ -z "$BIN" ]; then
+            BIN=$(find build -type f \( -name 'luac.cross' -o -name 'luac.cross.int' -o -name 'luac.cross.exe' -o -name 'luac.cross.int.exe' \) -print -quit 2>/dev/null)
+          fi
+          if [ -z "$BIN" ]; then
+            echo "luac.cross not found anywhere under build/"
+            ls -lR build/tools/luac_cross 2>/dev/null || true
+            find build -maxdepth 4 -type f 2>/dev/null | head -40
+            exit 1
+          fi
+          echo "Found binary: $BIN ($(stat -c '%a %s bytes' "$BIN" 2>/dev/null || stat -f '%p %z bytes' "$BIN"))"
+          # Defensive: ensure it's executable on Unix runners.
+          if [ "${{ runner.os }}" != "Windows" ]; then
+            chmod +x "$BIN" 2>/dev/null || true
+          fi
           case "${{ matrix.flavour }}" in
-            lua53) EXPECT='Lua 5.3' ;;
-            *)     EXPECT='Lua 5.1' ;;
+            lua53)     EXPECT='Lua 5.3' ;;
+            lua51)     EXPECT='Lua 5.1' ;;
+            lua51-int) EXPECT='Lua 5.1' ;;
           esac
-          OUT=$("$BIN" -v 2>&1 || true)
-          echo "Got:  $OUT"
+          OUT=$("$BIN" -v 2>&1)
+          RC=$?
+          echo "Got (rc=$RC): $OUT"
           echo "Want: $EXPECT"
-          echo "$OUT" | grep -q "$EXPECT" || { echo "MISMATCH"; exit 1; }
+          if [ $RC -ne 0 ]; then
+            echo "Binary exited non-zero on -v"
+            exit 1
+          fi
+          if ! printf '%s' "$OUT" | grep -qF "$EXPECT"; then
+            echo "MISMATCH: '$OUT' does not contain '$EXPECT'"
+            exit 1
+          fi
 
       - name: Package archive
         id: package
