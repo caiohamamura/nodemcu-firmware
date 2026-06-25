@@ -141,7 +141,21 @@ jobs:
         shell: bash
         run: |
           set -e
-          BIN=$(ls "build/tools/luac_cross/${CMAKE_TARGET}" "build/tools/luac_cross/${CMAKE_TARGET}.exe" 2>/dev/null | head -1)
+          # Locate the built binary (same logic as the verify step).
+          BIN=""
+          for cand in \
+            "build/tools/luac_cross/${CMAKE_TARGET}" \
+            "build/tools/luac_cross/${CMAKE_TARGET}.exe"; do
+            if [ -f "$cand" ]; then BIN="$cand"; break; fi
+          done
+          if [ -z "$BIN" ]; then
+            BIN=$(find build -type f \( -name 'luac.cross' -o -name 'luac.cross.int' -o -name 'luac.cross.exe' -o -name 'luac.cross.int.exe' \) -print -quit 2>/dev/null)
+          fi
+          if [ -z "$BIN" ]; then
+            echo "luac.cross not found in build/" >&2
+            exit 1
+          fi
+          echo "Packaging $BIN"
           STAGE="$(mktemp -d)"
           # The member must be the bare name (no .exe) the extension extracts.
           cp "$BIN" "$STAGE/${MEMBER}"
