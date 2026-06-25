@@ -1,94 +1,140 @@
 name: Publish luac.cross release assets
 
-# Builds the host `luac.cross` LFS compiler for every platform x Lua version the
-# nodemcu-vscode extension knows how to download, and uploads them to a single
-# release. The extension's `ensurePrebuiltLuacCross` fetches these by name so
-# users never need a host C compiler / cmake to build an LFS image.
+# Builds the host `luac.cross` LFS compiler for every Lua flavour x platform the
+# nodemcu-vscode extension can download, and attaches them to a release. The
+# extension (src/firmware/prebuiltLuacCross.ts) fetches these by name so users
+# never need a host C compiler / cmake to build an LFS image.
 #
-# Asset name convention (must match src/firmware/managedFirmware.ts):
-#   luac.cross-linux-x64-lua53
-#   luac.cross-darwin-x64-lua53
-#   luac.cross-darwin-arm64-lua53
-#   luac.cross.exe-win32-x64-lua53
-# ...and the lua51 variants.
+# Asset contract — must match prebuiltLuacCross.ts:
+#   name:   luac-cross-<TAG>-<flavour>-<platform>-<arch>.<ext>
+#             flavour  in { lua51, lua51-int, lua53 }
+#             platform in { linux, darwin, win32 }, arch in { x64, arm64 }
+#             ext = zip on win32, tar.gz elsewhere
+#   member: a single file named exactly `luac.cross` (float) or
+#           `luac.cross.int` (integral) — NO `.exe`, even on Windows. The
+#           extension's cache path uses that bare name and only appends `.exe`
+#           when copying into the firmware build dir.
+#   tag:    the release the assets attach to AND the <TAG> in the asset name.
+#           On a tag push this is the firmware tag (github.ref_name); the
+#           extension downloads from MANAGED_FIRMWARE_TAG, so the pushed tag
+#           must equal MANAGED_FIRMWARE_TAG (e.g. v3.1.2).
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to publish assets to"
-        required: true
-        default: "luac-cross-v3.1.0"
+        description: "Release tag to attach assets to (defaults to the pushed tag, e.g. v3.1.2)"
+        required: false
 
 permissions:
   contents: write
 
 jobs:
   build:
+    name: "${{ matrix.flavour }} ${{ matrix.target }}"
     strategy:
+      # A partial matrix (some assets built, others not) is worse than waiting,
+      # so let every job run even if one fails.
       fail-fast: false
       matrix:
-        lua_ver: ["51", "53"]
         include:
-          - os: ubuntu-latest
-            platform_key: linux-x64
-            ext: ""
-          - os: macos-13          # Intel runner -> darwin-x64
-            platform_key: darwin-x64
-            ext: ""
-          - os: macos-14          # Apple Silicon runner -> darwin-arm64
-            platform_key: darwin-arm64
-            ext: ""
-          - os: windows-2022
-            platform_key: win32-x64
-            ext: ".exe"
+          # native linux x64 (gcc)
+          - { flavour: lua53,     lua: "53", integral: false, target: linux-x64,    os: ubuntu-24.04 }
+          - { flavour: lua51,     lua: "51", integral: false, target: linux-x64,    os: ubuntu-24.04 }
+          - { flavour: lua51-int, lua: "51", integral: true,  target: linux-x64,    os: ubuntu-24.04 }
+          # native macOS arm64 (Apple Silicon, clang)
+          - { flavour: lua53,     lua: "53", integral: false, target: darwin-arm64, os: macos-14 }
+          - { flavour: lua51,     lua: "51", integral: false, target: darwin-arm64, os: macos-14 }
+          - { flavour: lua51-int, lua: "51", integral: true,  target: darwin-arm64, os: macos-14 }
+          # native windows x64 (MSVC)
+          - { flavour: lua53,     lua: "53", integral: false, target: win32-x64,    os: windows-2022 }
+          - { flavour: lua51,     lua: "51", integral: false, target: win32-x64,    os: windows-2022 }
+          - { flavour: lua51-int, lua: "51", integral: true,  target: win32-x64,    os: windows-2022 }
+
     runs-on: ${{ matrix.os }}
+    env:
+      # Release/asset tag: the manual input, else the pushed tag.
+      TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+      # cmake target + extracted member name for this flavour.
+      CMAKE_TARGET: ${{ matrix.integral && 'luac.cross.int' || 'luac.cross' }}
+      MEMBER: ${{ matrix.integral && 'luac.cross.int' || 'luac.cross' }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
 
-      - name: Install ninja (unix)
-        if: runner.os != 'Windows'
+      - name: Install ninja
         uses: seanmiddleditch/gha-setup-ninja@v6
 
       - name: Build luac.cross (unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          # Only the host `luac.cross` target is needed — building the full
-          # firmware would pull in the xtensa cross-compile (slow and fragile on
-          # the macOS/Windows runners) for no benefit, and `cmake --install`
-          # depends on targets (spiffsimg) we never build here.
-          cmake -B build -GNinja -DLUA=${{ matrix.lua_ver }} -DCMAKE_BUILD_TYPE=Release .
-          cmake --build build --target luac.cross -j
-          # The integral build emits luac.cross.int; the float build emits luac.cross.
-          src=$(ls build/tools/luac_cross/luac.cross.int build/tools/luac_cross/luac.cross 2>/dev/null | head -1)
-          test -n "$src" || { echo "luac.cross binary not found"; ls -lR build/tools/luac_cross; exit 1; }
-          mv "$src" "luac.cross-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
+          set -e
+          # Only the host luac.cross target — the xtensa firmware compile is slow
+          # and unneeded here. BUILD_HOST_TOOLS=ON because this runner has gcc/clang.
+          INTEGRAL=""
+          if [ "${{ matrix.integral }}" = "true" ]; then INTEGRAL="-DLUA_NUMBER_INTEGRAL=ON"; fi
+          cmake -B build -GNinja -DLUA=${{ matrix.lua }} $INTEGRAL -DBUILD_HOST_TOOLS=ON -DCMAKE_BUILD_TYPE=Release .
+          cmake --build build --target "$CMAKE_TARGET" -j
 
       - name: Build luac.cross (windows)
         if: runner.os == 'Windows'
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cmake -B build -GNinja -DLUA=${{ matrix.lua_ver }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
-          cmake --build build --target luac.cross --parallel
-          if exist build\tools\luac_cross\luac.cross.int.exe (
-            move /y build\tools\luac_cross\luac.cross.int.exe "luac.cross.exe-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
-          ) else (
-            move /y build\tools\luac_cross\luac.cross.exe "luac.cross.exe-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}"
-          )
+          set INTEGRAL=
+          if "${{ matrix.integral }}"=="true" set INTEGRAL=-DLUA_NUMBER_INTEGRAL=ON
+          cmake -B build -GNinja -DLUA=${{ matrix.lua }} %INTEGRAL% -DBUILD_HOST_TOOLS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl .
+          cmake --build build --target %CMAKE_TARGET%
 
-      - name: Upload to release
+      - name: Verify the binary reports the right Lua version
+        shell: bash
+        run: |
+          set -e
+          BIN=$(ls "build/tools/luac_cross/${CMAKE_TARGET}" "build/tools/luac_cross/${CMAKE_TARGET}.exe" 2>/dev/null | head -1)
+          test -n "$BIN" || { echo "luac.cross not found"; ls -lR build/tools/luac_cross || true; exit 1; }
+          case "${{ matrix.flavour }}" in
+            lua53) EXPECT='Lua 5.3' ;;
+            *)     EXPECT='Lua 5.1' ;;
+          esac
+          OUT=$("$BIN" -v 2>&1 || true)
+          echo "Got:  $OUT"
+          echo "Want: $EXPECT"
+          echo "$OUT" | grep -q "$EXPECT" || { echo "MISMATCH"; exit 1; }
+
+      - name: Package archive
+        id: package
+        shell: bash
+        run: |
+          set -e
+          BIN=$(ls "build/tools/luac_cross/${CMAKE_TARGET}" "build/tools/luac_cross/${CMAKE_TARGET}.exe" 2>/dev/null | head -1)
+          STAGE="$(mktemp -d)"
+          # The member must be the bare name (no .exe) the extension extracts.
+          cp "$BIN" "$STAGE/${MEMBER}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ASSET="luac-cross-${TAG}-${{ matrix.flavour }}-${{ matrix.target }}.zip"
+            WIN_SRC=$(cygpath -w "$STAGE/${MEMBER}")
+            WIN_DST=$(cygpath -w "$(pwd)/$ASSET")
+            export WIN_SRC WIN_DST
+            powershell -NoProfile -Command \
+              'Compress-Archive -Path $env:WIN_SRC -DestinationPath $env:WIN_DST -Force'
+          else
+            ASSET="luac-cross-${TAG}-${{ matrix.flavour }}-${{ matrix.target }}.tar.gz"
+            tar -C "$STAGE" -czf "$ASSET" "${MEMBER}"
+          fi
+          ls -la "$ASSET"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
-          files: |
-            luac.cross-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}
-            luac.cross.exe-${{ matrix.platform_key }}-lua${{ matrix.lua_ver }}
-          fail_on_unmatched_files: false
+          # Upserts the release if it does not exist yet. Indexed by TAG, which
+          # must equal MANAGED_FIRMWARE_TAG in the extension.
+          tag_name: ${{ env.TAG }}
+          files: ${{ steps.package.outputs.asset }}
+          fail_on_unmatched_files: true
